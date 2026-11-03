@@ -42,3 +42,17 @@ how many audio blocks and display lists it produced.
 
 `platforms/desktop/build/sdl_input_probe` prints the SDL3 numbering of joystick buttons,
 axes and keys, for writing input bindings.
+
+## Checks against the firmware
+
+Both need the firmware toolchain in `agt/10.3` (see the root `Makefile`). Run them after
+changing on-disk structs or DSP code.
+
+```sh
+# On-disk structs (project, instrument, pattern, config) have the firmware's sizes and offsets.
+tools/check_layout.sh platforms/desktop/build/layout_probe
+
+# The C DSP fallbacks and sin_q15 are bit-identical to the ARM instructions and CMSIS.
+# Runs a 32-bit ARM binary, so it needs an ARM Linux kernel with 32-bit support (the uConsole).
+tools/check_dsp.sh platforms/desktop/build/dsp_vectors
+```

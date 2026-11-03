@@ -114,3 +114,12 @@ if(MEADOWLARK_SDL)
   add_executable(sdl_input_probe ${ROOT_DIR}/tools/sdl_input_probe.c)
   target_link_libraries(sdl_input_probe PRIVATE SDL3::SDL3)
 endif()
+
+# --- tests ---------------------------------------------------------------------------------
+# Prints sizes/offsets of on-disk structs; tools/check_layout.sh compares them with the firmware.
+add_executable(layout_probe tests/layout_probe.cpp)
+target_link_libraries(layout_probe PRIVATE meadowlark_platform)
+
+# Hashes of the DSP fallbacks' outputs; tools/check_dsp.sh compares them with the ARM asm.
+add_executable(dsp_vectors tests/dsp_vectors.cpp)
+target_link_libraries(dsp_vectors PRIVATE meadowlark_platform)
