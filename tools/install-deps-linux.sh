@@ -3,22 +3,17 @@
 # Primary target: Debian trixie (uConsole).
 #
 #   tools/install-deps-linux.sh            # what the current build needs
-#   tools/install-deps-linux.sh --probe    # + SDL3, for tools/sdl_input_probe.c
 #   tools/install-deps-linux.sh --planned  # + libraries for the later port phases
 #
 # Extra apt-get options can be passed after "--", e.g. "-- --no-install-recommends".
 
 set -euo pipefail
 
-# Headless spike: compiler, make, git (version.mk reads the commit hash).
-BASE_PKGS=(build-essential clang git make)
-
-PROBE_PKGS=(pkg-config libsdl3-dev)
+# Compiler and build tools for the desktop build.
+BASE_PKGS=(build-essential clang git cmake ninja-build pkg-config libsdl3-dev)
 
 # Phase 2-9: display, audio, input, MIDI, fonts, config, plugin hosting.
 PLANNED_PKGS=(
-  pkg-config
-  libsdl3-dev           # window, input
   libpipewire-0.3-dev   # audio backend
   librtmidi-dev         # MIDI
   libfreetype-dev       # configurable TTF fonts
@@ -28,7 +23,7 @@ PLANNED_PKGS=(
 )
 
 usage() {
-  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 pkgs=("${BASE_PKGS[@]}")
@@ -36,7 +31,6 @@ apt_opts=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --probe)   pkgs+=("${PROBE_PKGS[@]}") ;;
     --planned) pkgs+=("${PLANNED_PKGS[@]}") ;;
     -h|--help) usage; exit 0 ;;
     --)        shift; apt_opts=("$@"); break ;;
@@ -78,4 +72,5 @@ $SUDO apt-get install -y ${apt_opts[@]+"${apt_opts[@]}"} "${unique[@]}"
 
 echo
 echo "Done. Build with:"
-echo "  make -C platforms/desktop -j\$(nproc) CXX=clang++ CC=clang"
+echo "  cmake -S platforms/desktop -B platforms/desktop/build -G Ninja"
+echo "  cmake --build platforms/desktop/build"
