@@ -1,12 +1,10 @@
 name: Sync Docs to GitHub Wiki
 
+# Automatic runs are disabled for now. To restore, put back:
+#   push:
+#     branches: [ main ]
+#     paths: [ 'docs/**', 'CHANGELOG.md', '.github/workflows/wiki-sync.yml' ]
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'docs/**'
-      - 'CHANGELOG.md'
-      - '.github/workflows/wiki-sync.yml'
   workflow_dispatch:
 
 permissions:

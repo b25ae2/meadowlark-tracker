@@ -1,11 +1,9 @@
 name: Build Tracker CE Firmware
 
+# Automatic runs are disabled for now: builds happen locally. To restore, put back:
+#   push: { branches: [ main ], tags: [ 'v*' ] }
+#   pull_request: { branches: [ main ] }
 on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
