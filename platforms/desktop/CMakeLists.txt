@@ -4,7 +4,7 @@
 #   cmake -S platforms/desktop -B build/desktop -G Ninja
 #   cmake --build build/desktop
 #
-# Options: -DMEADOWLARK_SDL=OFF builds the headless runner only.
+# Options: -DMEADOWLARK_SDL=OFF builds the headless runner only (no SDL3 or toml++ needed).
 #          -DMEADOWLARK_SANITIZE=address,undefined adds sanitizers.
 
 cmake_minimum_required(VERSION 3.25)
@@ -93,6 +93,7 @@ target_compile_options(meadowlark_core
 # objects must always be linked, whatever the linker's archive ordering rules are.
 add_library(meadowlark_platform OBJECT
   source/AudioLock.cpp
+  source/DesktopButtons.cpp
   source/DesktopDisplayDriver.cpp
   source/DesktopFileSystem.cpp
   source/eve/EveCoprocessor.cpp
@@ -116,8 +117,34 @@ target_compile_options(meadowlark-headless PRIVATE -Wall -Wextra)
 
 if(MEADOWLARK_SDL)
   find_package(SDL3 REQUIRED CONFIG COMPONENTS SDL3)
+
+  # toml++ is used header-only on every system. Debian also ships it as a shared library
+  # built with exceptions, which this build has turned off, so only its headers are used.
+  find_path(TOMLPP_INCLUDE_DIR toml++/toml.hpp REQUIRED)
+
+  # Input layer: SDL events -> bindings from input.toml -> Mini buttons and commands.
+  add_library(meadowlark_input STATIC
+    source/input/Actions.cpp
+    source/input/InputConfig.cpp
+    source/input/InputResolver.cpp
+    source/input/SdlInput.cpp)
+  target_include_directories(meadowlark_input PUBLIC source)
+  target_include_directories(meadowlark_input SYSTEM PRIVATE ${TOMLPP_INCLUDE_DIR})
+  target_compile_definitions(meadowlark_input PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
+  target_link_libraries(meadowlark_input PUBLIC meadowlark_core SDL3::SDL3)
+  target_compile_options(meadowlark_input PRIVATE -Wall -Wextra)
+
+  # The application: SDL3 window and input.
+  add_executable(meadowlark source/sdl/main.cpp)
+  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input)
+  target_compile_options(meadowlark PRIVATE -Wall -Wextra)
+
   add_executable(sdl_input_probe ${ROOT_DIR}/tools/sdl_input_probe.c)
   target_link_libraries(sdl_input_probe PRIVATE SDL3::SDL3)
+
+  # Button timing, bindings and input.toml; takes a scratch directory.
+  add_executable(input_test tests/input_test.cpp)
+  target_link_libraries(input_test PRIVATE meadowlark_platform meadowlark_input)
 endif()
 
 # --- tests ---------------------------------------------------------------------------------

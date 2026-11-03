@@ -2,11 +2,13 @@
 
 // Desktop implementation of core's Platform interfaces.
 //
-// The display is a software FT812 (DesktopDisplayDriver) and the SD card a host directory
-// (DesktopFileSystem). Everything else except the clock is still a safe stub; later phases
-// replace them: audio (phase 3), input (phase 4), MIDI (phase 6).
+// The display is a software FT812 (DesktopDisplayDriver), the SD card a host directory
+// (DesktopFileSystem) and the buttons are fed by the front end's input layer
+// (DesktopButtons). Everything else except the clock is still a safe stub; later phases
+// replace them: audio (phase 3), MIDI (phase 6).
 
 #include "ConfigManager.h"
+#include "DesktopButtons.h"
 #include "DesktopDisplayDriver.h"
 #include "DesktopFileSystem.h"
 #include "Platform.h"
@@ -29,6 +31,7 @@ class DesktopTimer : public Timer
     std::chrono::steady_clock::time_point start;
 };
 
+// The Mini has no pad grid; this group never fires.
 class StubSwitchGroup : public SwitchGroup
 {
   public:
@@ -152,9 +155,6 @@ class StubUsbMidi : public UsbMidi
     void setReceiveActions(MidiReceiveActions*) override {}
 };
 
-// No card inserted: every operation fails cleanly. Replaced by the host-directory
-// file system in phase 5.
-
 // Same as the Mini: settings live in /trackerConfig on the "SD card".
 class FileConfigManager : public ConfigManager
 {
@@ -217,19 +217,22 @@ class PlatformDesktop : public Platform
     SystemInfo* getSystemInfo() override { return &systemInfo; }
     Usb* getUsb() override { return &usb; }
 
+    DesktopButtons& desktopButtons() { return buttons; }
     DesktopDisplayDriver& desktopDisplay() { return display; }
     DesktopFileSystem& desktopFileSystem() { return fileSystem; }
     bool powerOffRequested() const { return powerOff; }
+    // The Mini's power button: held for 1.5 s, core saves the project and powers off.
+    void setPowerButton(bool pressed);
+    bool isPowerButtonPressed() const { return powerButtonPressed; }
 
   private:
+    DesktopTimer timer;
     StubSgtl5000 codec;
     StubRadio radio;
-    StubSwitchGroup buttons;
-    // The Mini has no pad grid; this group never fires.
+    DesktopButtons buttons;
     StubSwitchGroup pads;
     StubLeds leds;
     StubBattery battery;
-    DesktopTimer timer;
     StubEncoder encoder;
     DesktopDisplayDriver display;
     StubUsbAudio usbAudio;
@@ -243,4 +246,5 @@ class PlatformDesktop : public Platform
 
     PowerButtonCallback powerButtonCallback = nullptr;
     bool powerOff = false;
+    bool powerButtonPressed = false;
 };

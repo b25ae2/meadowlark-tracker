@@ -81,7 +81,7 @@ void FileConfigManager::writeData(int address, void* data, int size)
 //------------------------------------------------------------------------------
 // PlatformDesktop
 
-PlatformDesktop::PlatformDesktop() : configManager(&fileSystem)
+PlatformDesktop::PlatformDesktop() : buttons(&timer), configManager(&fileSystem)
 {
     static const char kBuildId[] = "desktop";
     systemInfo.buildId = kBuildId;
@@ -109,4 +109,13 @@ void PlatformDesktop::runBootloader(char* fileName)
 void PlatformDesktop::setPowerButtonCallback(PowerButtonCallback callback)
 {
     powerButtonCallback = callback;
+}
+
+void PlatformDesktop::setPowerButton(bool pressed)
+{
+    if (pressed == powerButtonPressed)
+        return;
+    powerButtonPressed = pressed;
+    if (powerButtonCallback)
+        powerButtonCallback(pressed ? 1 : 0);
 }
