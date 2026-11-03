@@ -36,48 +36,6 @@ uint32_t DesktopTimer::clockCycles()
 }
 
 //------------------------------------------------------------------------------
-// StubDisplayDriver
-
-void StubDisplayDriver::getImgProps(uint32_t& addr, uint32_t& width, uint32_t& height)
-{
-    addr = 0;
-    width = 0;
-    height = 0;
-}
-
-void StubDisplayDriver::writeDataRAMG(const uint8_t*, uint32_t dataSize, uint32_t)
-{
-    ramgBytesWritten += dataSize;
-}
-
-void StubDisplayDriver::writeFontRAMG(const uint8_t*, uint32_t dataSize, uint32_t)
-{
-    ramgBytesWritten += dataSize;
-}
-
-void StubDisplayDriver::readDataRAMG(uint8_t* imgData, uint32_t dataSize, uint32_t)
-{
-    std::memset(imgData, 0, dataSize);
-}
-
-void StubDisplayDriver::readBackDataRAMG(uint8_t* imgData, uint32_t dataSize, uint32_t)
-{
-    std::memset(imgData, 0, dataSize);
-}
-
-uint8_t StubDisplayDriver::sendString(const char*, uint32_t length)
-{
-    // Strings are padded to 4-byte words in the FT812 command FIFO.
-    wordsWritten += (length + 1 + 3) / 4;
-    return 0;
-}
-
-void StubDisplayDriver::writeDataToCMD(const uint8_t*, uint32_t totalDataSize)
-{
-    wordsWritten += (totalDataSize + 3) / 4;
-}
-
-//------------------------------------------------------------------------------
 // StubSwitchGroup
 
 void StubSwitchGroup::setActionCallback(ActionType action, void (*callback)(uint8_t))

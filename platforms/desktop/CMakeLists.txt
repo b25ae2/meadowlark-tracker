@@ -93,9 +93,13 @@ target_compile_options(meadowlark_core
 # objects must always be linked, whatever the linker's archive ordering rules are.
 add_library(meadowlark_platform OBJECT
   source/AudioLock.cpp
+  source/DesktopDisplayDriver.cpp
+  source/eve/EveCoprocessor.cpp
+  source/eve/EveRenderer.cpp
   source/hardware.cpp
   source/platform_math.cpp
-  source/PlatformDesktop.cpp)
+  source/PlatformDesktop.cpp
+  source/PngWriter.cpp)
 target_include_directories(meadowlark_platform PUBLIC source)
 target_link_libraries(meadowlark_platform PUBLIC meadowlark_core)
 target_compile_options(meadowlark_platform PRIVATE -Wall -Wextra)

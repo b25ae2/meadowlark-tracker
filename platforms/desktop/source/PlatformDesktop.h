@@ -2,12 +2,12 @@
 
 // Desktop implementation of core's Platform interfaces.
 //
-// Phase 0: everything except the clock is a safe stub, so core can init and run
-// headless. Later phases replace the stubs: display renderer (phase 2), audio
-// (phase 3), input (phase 4), file system (phase 5), MIDI (phase 6).
+// The display is a software FT812 (DesktopDisplayDriver). Everything else except the
+// clock is still a safe stub; later phases replace them: audio (phase 3), input
+// (phase 4), file system (phase 5), MIDI (phase 6).
 
 #include "ConfigManager.h"
-#include "DisplayDriver.h"
+#include "DesktopDisplayDriver.h"
 #include "Platform.h"
 
 #include <chrono>
@@ -26,40 +26,6 @@ class DesktopTimer : public Timer
 
   private:
     std::chrono::steady_clock::time_point start;
-};
-
-// Accepts the FT812 command stream and discards it, counting what the UI sends.
-class StubDisplayDriver : public DisplayDriver
-{
-  public:
-    void setPowerState(bool) override {}
-    void setBrightness(int) override {}
-    void setRotation(int) override {}
-
-    void getImgProps(uint32_t& addr, uint32_t& width, uint32_t& height) override;
-    uint32_t getDisplayListOffset() override { return 0; }
-    void IncCMDOffset(uint16_t) override {}
-    void WriteData32(uint32_t) override { wordsWritten++; }
-
-    void beginCoProList() override {}
-    void beginCoProListNoCheck() override {}
-    void endCoProList() override { listsSubmitted++; }
-    void awaitCoProEmpty() override {}
-    uint8_t isCoProEmpty() override { return 1; }
-    void writeDataRAMG(const uint8_t*, uint32_t dataSize, uint32_t) override;
-    void writeFontRAMG(const uint8_t*, uint32_t dataSize, uint32_t) override;
-    void readDataRAMG(uint8_t* imgData, uint32_t dataSize, uint32_t) override;
-    void readBackDataRAMG(uint8_t* imgData, uint32_t dataSize, uint32_t) override;
-    uint8_t sendString(const char* string, uint32_t length) override;
-    void writeDataToCMD(const uint8_t*, uint32_t totalDataSize) override;
-
-    void initStreamDma(uint16_t, uint16_t, uint16_t, uint8_t*, uint32_t) override {}
-    bool updateStreamDma(bool) override { return true; }
-    void stopStreamDma() override {}
-
-    uint64_t wordsWritten = 0;
-    uint64_t listsSubmitted = 0;
-    uint64_t ramgBytesWritten = 0;
 };
 
 class StubSwitchGroup : public SwitchGroup
@@ -318,7 +284,7 @@ class PlatformDesktop : public Platform
     SystemInfo* getSystemInfo() override { return &systemInfo; }
     Usb* getUsb() override { return &usb; }
 
-    StubDisplayDriver& stubDisplay() { return display; }
+    DesktopDisplayDriver& desktopDisplay() { return display; }
     bool powerOffRequested() const { return powerOff; }
 
   private:
@@ -331,7 +297,7 @@ class PlatformDesktop : public Platform
     StubBattery battery;
     DesktopTimer timer;
     StubEncoder encoder;
-    StubDisplayDriver display;
+    DesktopDisplayDriver display;
     StubUsbAudio usbAudio;
     StubUartMidi uartMidi;
     StubUsbMidi usbMidi;
