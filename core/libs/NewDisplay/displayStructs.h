@@ -2,17 +2,13 @@
 #ifndef LIBS_NEWDISPLAY_DISPLAYSTRUCTS_H_
 #define LIBS_NEWDISPLAY_DISPLAYSTRUCTS_H_
 
+#include <cstring>
 #include <stddef.h>
 #include <stdint.h>
 
 class cDisplayControl;
 class cDebugLog;
 class cDisplay;
-
-extern "C"
-{
-    extern void* memcpy(void* dst, const void* src, size_t count);
-}
 
 // #########################################################################
 //							DEFINICJE
