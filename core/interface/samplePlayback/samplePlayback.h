@@ -55,7 +55,9 @@ class cSamplePlayback : public ModuleBase
         spectrumControl[1] = -1;
         pointsControl = -1;
         slicePointsControl = -1;
-        label[8] = { -1 };
+        // Was `label[8] = { -1 };`, an out-of-bounds write that landed on the next
+        // member. Kept explicit so behaviour matches existing firmware.
+        playModeListControl = -1;
         // popupLabel = -1;
         lastSampleLength = 0;
     }

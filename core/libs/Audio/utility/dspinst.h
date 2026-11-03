@@ -53,6 +53,11 @@ static inline int32_t signed_saturate_rshift(int32_t val, int bits, int rshift)
             out = -max;
     }
     return out;
+#else
+    int32_t out = val >> rshift;
+    const int32_t max = (1 << (bits - 1)) - 1;
+    const int32_t min = -(1 << (bits - 1));
+    return out > max ? max : (out < min ? min : out);
 #endif
 }
 
@@ -68,6 +73,8 @@ static inline int16_t saturate16(int32_t val)
     return out;
 #elif defined(KINETISL)
     return 0; // TODO....
+#else
+    return (int16_t)(val > 32767 ? 32767 : (val < -32768 ? -32768 : val));
 #endif
 }
 
@@ -82,6 +89,8 @@ static inline int32_t signed_multiply_32x16b(int32_t a, uint32_t b)
     return out;
 #elif defined(KINETISL)
     return ((int64_t)a * (int16_t)(b & 0xFFFF)) >> 16;
+#else
+    return (int32_t)(((int64_t)a * (int16_t)(b & 0xFFFF)) >> 16);
 #endif
 }
 
@@ -96,6 +105,8 @@ static inline int32_t signed_multiply_32x16t(int32_t a, uint32_t b)
     return out;
 #elif defined(KINETISL)
     return ((int64_t)a * (int16_t)(b >> 16)) >> 16;
+#else
+    return (int32_t)(((int64_t)a * (int16_t)(b >> 16)) >> 16);
 #endif
 }
 
@@ -110,6 +121,8 @@ static inline int32_t multiply_32x32_rshift32(int32_t a, int32_t b)
     return out;
 #elif defined(KINETISL)
     return 0; // TODO....
+#else
+    return (int32_t)(((int64_t)a * b) >> 32);
 #endif
 }
 
@@ -124,6 +137,8 @@ static inline int32_t multiply_32x32_rshift32_rounded(int32_t a, int32_t b)
     return out;
 #elif defined(KINETISL)
     return 0; // TODO....
+#else
+    return (int32_t)(((int64_t)a * b + 0x80000000LL) >> 32);
 #endif
 }
 
@@ -138,6 +153,8 @@ static inline int32_t multiply_accumulate_32x32_rshift32_rounded(int32_t sum, in
     return out;
 #elif defined(KINETISL)
     return 0; // TODO....
+#else
+    return (int32_t)((uint32_t)sum + (uint32_t)(int32_t)(((int64_t)a * b + 0x80000000LL) >> 32));
 #endif
 }
 
@@ -152,6 +169,8 @@ static inline int32_t multiply_subtract_32x32_rshift32_rounded(int32_t sum, int3
     return out;
 #elif defined(KINETISL)
     return 0; // TODO....
+#else
+    return (int32_t)((uint32_t)sum + (uint32_t)(int32_t)((0x80000000LL - (int64_t)a * b) >> 32));
 #endif
 }
 
@@ -165,6 +184,8 @@ static inline uint32_t pack_16t_16t(int32_t a, int32_t b)
     return out;
 #elif defined(KINETISL)
     return (a & 0xFFFF0000) | ((uint32_t)b >> 16);
+#else
+    return ((uint32_t)a & 0xFFFF0000) | ((uint32_t)b >> 16);
 #endif
 }
 
@@ -178,6 +199,8 @@ static inline uint32_t pack_16t_16b(int32_t a, int32_t b)
     return out;
 #elif defined(KINETISL)
     return (a & 0xFFFF0000) | (b & 0x0000FFFF);
+#else
+    return ((uint32_t)a & 0xFFFF0000) | ((uint32_t)b & 0x0000FFFF);
 #endif
 }
 
@@ -191,6 +214,8 @@ static inline uint32_t pack_16b_16b(int32_t a, int32_t b)
     return out;
 #elif defined(KINETISL)
     return (a << 16) | (b & 0x0000FFFF);
+#else
+    return ((uint32_t)a << 16) | ((uint32_t)b & 0x0000FFFF);
 #endif
 }
 
@@ -205,6 +230,7 @@ static inline uint32_t pack_16x16(int32_t a, int32_t b)
 }
 */
 
+#if defined(KINETISK)
 // computes (((a[31:16] + b[31:16]) << 16) | (a[15:0 + b[15:0]))  (saturates)
 static inline uint32_t signed_add_16_and_16(uint32_t a, uint32_t b)
   __attribute__((always_inline, unused));
@@ -375,6 +401,108 @@ static inline void clr_q_psr(void)
         "msr APSR_nzcvq,%0\n"
         : [t] "=&r"(t)::"cc");
 }
+#else
+// Portable equivalents of the ARMv7E-M DSP instructions above (host builds).
+// Each one matches the instruction's saturation / wrap-around behaviour.
+
+static inline int16_t dspinst_lo16(uint32_t v) { return (int16_t)(v & 0xFFFF); }
+static inline int16_t dspinst_hi16(uint32_t v) { return (int16_t)(v >> 16); }
+static inline uint32_t dspinst_pack16(int32_t hi, int32_t lo)
+{
+    return ((uint32_t)(uint16_t)hi << 16) | (uint16_t)lo;
+}
+static inline int32_t dspinst_sat16(int32_t v)
+{
+    return v > 32767 ? 32767 : (v < -32768 ? -32768 : v);
+}
+
+// qadd16
+static inline uint32_t signed_add_16_and_16(uint32_t a, uint32_t b)
+{
+    return dspinst_pack16(dspinst_sat16(dspinst_hi16(a) + dspinst_hi16(b)),
+                          dspinst_sat16(dspinst_lo16(a) + dspinst_lo16(b)));
+}
+
+// qsub16
+static inline int32_t signed_subtract_16_and_16(int32_t a, int32_t b)
+{
+    return (int32_t)dspinst_pack16(dspinst_sat16(dspinst_hi16(a) - dspinst_hi16(b)),
+                                   dspinst_sat16(dspinst_lo16(a) - dspinst_lo16(b)));
+}
+
+// shadd16
+static inline int32_t signed_halving_add_16_and_16(int32_t a, int32_t b)
+{
+    return (int32_t)dspinst_pack16((dspinst_hi16(a) + dspinst_hi16(b)) >> 1,
+                                   (dspinst_lo16(a) + dspinst_lo16(b)) >> 1);
+}
+
+// shsub16
+static inline int32_t signed_halving_subtract_16_and_16(int32_t a, int32_t b)
+{
+    return (int32_t)dspinst_pack16((dspinst_hi16(a) - dspinst_hi16(b)) >> 1,
+                                   (dspinst_lo16(a) - dspinst_lo16(b)) >> 1);
+}
+
+// smlawb (accumulate wraps)
+static inline int32_t signed_multiply_accumulate_32x16b(int32_t sum, int32_t a, uint32_t b)
+{
+    return (int32_t)((uint32_t)sum + (uint32_t)(int32_t)(((int64_t)a * dspinst_lo16(b)) >> 16));
+}
+
+// smlawt (accumulate wraps)
+static inline int32_t signed_multiply_accumulate_32x16t(int32_t sum, int32_t a, uint32_t b)
+{
+    return (int32_t)((uint32_t)sum + (uint32_t)(int32_t)(((int64_t)a * dspinst_hi16(b)) >> 16));
+}
+
+static inline uint32_t logical_and(uint32_t a, uint32_t b) { return a & b; }
+
+// smuad (sum wraps)
+static inline int32_t multiply_16tx16t_add_16bx16b(uint32_t a, uint32_t b)
+{
+    return (int32_t)((uint32_t)(dspinst_hi16(a) * dspinst_hi16(b)) +
+                     (uint32_t)(dspinst_lo16(a) * dspinst_lo16(b)));
+}
+
+// smuadx (sum wraps)
+static inline int32_t multiply_16tx16b_add_16bx16t(uint32_t a, uint32_t b)
+{
+    return (int32_t)((uint32_t)(dspinst_hi16(a) * dspinst_lo16(b)) +
+                     (uint32_t)(dspinst_lo16(a) * dspinst_hi16(b)));
+}
+
+// smlald (64-bit accumulate wraps)
+static inline int64_t multiply_accumulate_16tx16t_add_16bx16b(int64_t sum, uint32_t a, uint32_t b)
+{
+    return (int64_t)((uint64_t)sum + (uint64_t)(int64_t)(dspinst_hi16(a) * dspinst_hi16(b)) +
+                     (uint64_t)(int64_t)(dspinst_lo16(a) * dspinst_lo16(b)));
+}
+
+// smlaldx (64-bit accumulate wraps)
+static inline int64_t multiply_accumulate_16tx16b_add_16bx16t(int64_t sum, uint32_t a, uint32_t b)
+{
+    return (int64_t)((uint64_t)sum + (uint64_t)(int64_t)(dspinst_hi16(a) * dspinst_lo16(b)) +
+                     (uint64_t)(int64_t)(dspinst_lo16(a) * dspinst_hi16(b)));
+}
+
+// smulbb / smulbt / smultb / smultt
+static inline int32_t multiply_16bx16b(uint32_t a, uint32_t b) { return dspinst_lo16(a) * dspinst_lo16(b); }
+static inline int32_t multiply_16bx16t(uint32_t a, uint32_t b) { return dspinst_lo16(a) * dspinst_hi16(b); }
+static inline int32_t multiply_16tx16b(uint32_t a, uint32_t b) { return dspinst_hi16(a) * dspinst_lo16(b); }
+static inline int32_t multiply_16tx16t(uint32_t a, uint32_t b) { return dspinst_hi16(a) * dspinst_hi16(b); }
+
+// qsub
+static inline int32_t substract_32_saturate(uint32_t a, uint32_t b)
+{
+    const int64_t r = (int64_t)(int32_t)a - (int64_t)(int32_t)b;
+    return r > INT32_MAX ? INT32_MAX : (r < INT32_MIN ? INT32_MIN : (int32_t)r);
+}
+
+// The host has no sticky saturation (Q) flag; nothing in core reads it.
+static inline uint32_t get_q_psr(void) { return 0; }
+static inline void clr_q_psr(void) {}
+#endif /* KINETISK */
 
 // Multiply two S.31 fractional integers, and return the 32 most significant
 // bits after a shift left by the constant z.

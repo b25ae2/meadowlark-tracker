@@ -5,7 +5,7 @@
 
 extern uint16_t externalRamReverbBuff[];
 #ifdef PLATFORM_IMX
-static uint16_t internalRamReverbBuff[16384] __attribute__((section(".noinit")));
+static uint16_t internalRamReverbBuff[16384] __NOINIT_DEF;
 #else
 static __NOINIT(EXTERNAL_RAM) uint16_t internalRamReverbBuff[16384];
 #endif

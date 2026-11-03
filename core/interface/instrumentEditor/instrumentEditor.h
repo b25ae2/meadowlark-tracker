@@ -11,6 +11,7 @@
 #include "Synth.h"
 #endif
 #include <map>
+#include <string>
 
 enum mtInstrumentEditorMode
 {

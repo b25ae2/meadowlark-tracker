@@ -13,6 +13,30 @@
 #ifndef CR_SECTION_MACROS_H_INCLUDED
 #define CR_SECTION_MACROS_H_INCLUDED
 
+#ifdef PLATFORM_DESKTOP
+// Host build: one flat address space, so every placement macro is a no-op.
+#define __SECTION_EXT(type, bank, name)
+#define __SECTION(type, bank)
+#define __SECTION_SIMPLE(type)
+#define __DATA_EXT(bank, name)
+#define __DATA(bank)
+#define __BSS_EXT(bank, name)
+#define __BSS(bank)
+#define __AFTER_VECTORS_EXT(name)
+#define __AFTER_VECTORS
+#define __RAM_FUNC_EXT(name)
+#define __RAM_FUNC
+#define __RAMFUNC_EXT(bank, name)
+#define __RAMFUNC(bank)
+#define __NOINIT_DEF
+#define __NOINIT_EXT(bank, name)
+#define __NOINIT(bank)
+#define __RODATA_EXT(bank, name)
+#define __RODATA(bank)
+#define __TEXT_EXT(bank, name)
+#define __TEXT(bank)
+#else
+
 // A macro for placing text (code), data, or bss into a named RAM section
 // These will be automatically placed into the named section by the linker.
 //
@@ -58,5 +82,7 @@
 
 #define __TEXT_EXT(bank,name) __SECTION_EXT(text, bank, name)
 #define __TEXT(bank) __SECTION(text, bank)
+
+#endif /* PLATFORM_DESKTOP */
 
 #endif /* CR_SECTION_MACROS_H_INCLUDED */

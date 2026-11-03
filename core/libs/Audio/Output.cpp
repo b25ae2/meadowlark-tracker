@@ -1,4 +1,5 @@
 #include "Output.h"
+#include <cassert>
 
 void AudioOutputStream::begin(void)
 {
