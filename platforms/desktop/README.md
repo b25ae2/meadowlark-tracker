@@ -34,14 +34,34 @@ Apple clang 15 on macOS 26; UBSan works on both.
 ## Run
 
 ```sh
-platforms/desktop/build/meadowlark-headless [seconds]
+platforms/desktop/build/meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
 ```
 
-Runs the core for the given time (default 3 s) without a window or sound device and prints
-how many audio blocks and display lists it produced.
+Runs the core for the given time (default 3 s) without a window or sound device, prints
+how many audio blocks and display lists it produced, and can save the last frame as PNG.
+
+## SD card
+
+A host directory stands in for the SD card:
+
+- Linux: `$XDG_DATA_HOME/meadowlark/sdcard` (usually `~/.local/share/meadowlark/sdcard`)
+- macOS: `~/Library/Application Support/Meadowlark/sdcard`
+- anywhere else: `--sd-root <dir>` or `MEADOWLARK_SD_ROOT=<dir>`
+
+It is created on first start; the firmware then creates its `Workspace`, `Fonts` and
+`Themes` folders and `trackerConfig` there, as on a fresh card. The contents of a real
+Tracker card can be copied in. Names are matched case-insensitively, like FAT. The FAT
+hidden attribute (used for `Workspace`) is kept in `.hidden` files; dot files count as
+hidden. `MEADOWLARK_FS_TRACE=1` logs file opens, existence checks and directory changes.
 
 `platforms/desktop/build/sdl_input_probe` prints the SDL3 numbering of joystick buttons,
 axes and keys, for writing input bindings.
+
+## Tests
+
+```sh
+platforms/desktop/build/fs_test /tmp/fs_test   # file system semantics; recreates the directory
+```
 
 ## Checks against the firmware
 

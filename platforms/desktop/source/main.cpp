@@ -2,7 +2,9 @@
 // audio blocks rendered inline (no audio device yet) and reports what the engine and UI
 // produced. The display is rendered by the software FT812, so the last frame can be saved.
 //
-//   meadowlark-headless [seconds] [--screenshot out.png]     seconds default: 3
+//   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
+//
+// seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot().
 
 #include "AudioLock.h"
 #include "PlatformDesktop.h"
@@ -15,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
 
 namespace
@@ -37,17 +40,33 @@ int main(int argc, char** argv)
 {
     double seconds = 3.0;
     const char* screenshotPath = nullptr;
+    std::string sdRoot = DesktopFileSystem::defaultRoot();
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
         {
             screenshotPath = argv[++i];
         }
+        else if (std::strcmp(argv[i], "--sd-root") == 0 && i + 1 < argc)
+        {
+            sdRoot = argv[++i];
+        }
+        else if (std::strcmp(argv[i], "--no-sd") == 0)
+        {
+            sdRoot.clear();
+        }
         else
         {
             seconds = std::atof(argv[i]);
         }
     }
+
+    if (!platform.desktopFileSystem().setRoot(sdRoot))
+    {
+        std::fprintf(stderr, "meadowlark: cannot use %s as the SD card\n", sdRoot.c_str());
+        return 1;
+    }
+    std::printf("meadowlark: SD card %s\n", sdRoot.empty() ? "(none)" : sdRoot.c_str());
 
     Tracker* tracker = Tracker::getInstance();
 

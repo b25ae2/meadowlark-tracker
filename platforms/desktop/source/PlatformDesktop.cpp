@@ -45,16 +45,6 @@ void StubSwitchGroup::setActionCallback(ActionType action, void (*callback)(uint
 }
 
 //------------------------------------------------------------------------------
-// StubFileSystem
-
-bool StubFileSystem::pollAsyncRead(bool* outSuccess)
-{
-    if (outSuccess)
-        *outSuccess = false;
-    return true;
-}
-
-//------------------------------------------------------------------------------
 // FileConfigManager
 
 namespace

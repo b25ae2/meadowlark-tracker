@@ -2,12 +2,13 @@
 
 // Desktop implementation of core's Platform interfaces.
 //
-// The display is a software FT812 (DesktopDisplayDriver). Everything else except the
-// clock is still a safe stub; later phases replace them: audio (phase 3), input
-// (phase 4), file system (phase 5), MIDI (phase 6).
+// The display is a software FT812 (DesktopDisplayDriver) and the SD card a host directory
+// (DesktopFileSystem). Everything else except the clock is still a safe stub; later phases
+// replace them: audio (phase 3), input (phase 4), MIDI (phase 6).
 
 #include "ConfigManager.h"
 #include "DesktopDisplayDriver.h"
+#include "DesktopFileSystem.h"
 #include "Platform.h"
 
 #include <chrono>
@@ -153,74 +154,6 @@ class StubUsbMidi : public UsbMidi
 
 // No card inserted: every operation fails cleanly. Replaced by the host-directory
 // file system in phase 5.
-class StubFileSystem : public FileSystem
-{
-  public:
-    bool isSdCardInserted() override { return false; }
-    void setMountEventCallback(CardStateChangeCallback) override {}
-
-    bool exists(const char*) override { return false; }
-    bool rename(const char*, const char*) override { return false; }
-    bool mkdir(uint8_t, const char*, bool) override { return false; }
-    bool remove(const char*) override { return false; }
-    bool removeDirWithFiles(const char*) override { return false; }
-    bool removeOnlyDirFiles(const char*) override { return false; }
-
-    size_t getFileSize(const char*) override { return 0; }
-    size_t getFileSize(FileHandle) override { return 0; }
-    size_t getFileAvailable(FileHandle) override { return 0; }
-
-    std::tuple<bool, FileHandle> openFile(const char*, FileOpenMode, FileHandle*) override
-    {
-        return { false, nullptr };
-    }
-    size_t readFile(void*, size_t, FileHandle) override { return 0; }
-    size_t writeFile(const void*, size_t, FileHandle) override { return 0; }
-    bool seekFileCur(int, FileHandle) override { return false; }
-    bool seekFile(uint32_t, FileHandle) override { return false; }
-    void closeFile(FileHandle, bool) override {}
-    void endFile(FileHandle) override {}
-    bool isFileOpen(FileHandle) override { return false; }
-    bool enableFastSeek(FileHandle, uint32_t*, uint32_t, uint32_t*, uint32_t*) override
-    {
-        return false;
-    }
-    bool readSectorsAsync(uint8_t*, uint32_t, uint32_t) override { return false; }
-    bool pollAsyncRead(bool* outSuccess) override;
-    bool waitAsyncRead() override { return false; }
-    bool isAsyncReadBusy() override { return false; }
-
-    int createInstrumentsList(const char*, char**, uint8_t, uint32_t*) override { return 0; }
-    int countContainedFiles(const char*) override { return 0; }
-    int createFilesList(const char*,
-                        uint8_t,
-                        char**,
-                        uint8_t,
-                        uint16_t,
-                        enListFileFilter,
-                        uint16_t,
-                        uint16_t,
-                        enListFileFilter) override
-    {
-        return 0;
-    }
-    void listDirContents(const char*,
-                         DirContentType,
-                         std::function<bool(const char* name)>,
-                         char*,
-                         int,
-                         int,
-                         int& outNamesCount,
-                         char**) override
-    {
-        outNamesCount = 0;
-    }
-
-    int readNbFiles(const char*) override { return 0; }
-    bool nesDir_open(const char*) override { return false; }
-    bool nesDir_readItem(char*, uint8_t*, uint8_t*, uint32_t*) override { return false; }
-    void nesDir_close() override {}
-};
 
 // Same as the Mini: settings live in /trackerConfig on the "SD card".
 class FileConfigManager : public ConfigManager
@@ -285,6 +218,7 @@ class PlatformDesktop : public Platform
     Usb* getUsb() override { return &usb; }
 
     DesktopDisplayDriver& desktopDisplay() { return display; }
+    DesktopFileSystem& desktopFileSystem() { return fileSystem; }
     bool powerOffRequested() const { return powerOff; }
 
   private:
@@ -301,7 +235,7 @@ class PlatformDesktop : public Platform
     StubUsbAudio usbAudio;
     StubUartMidi uartMidi;
     StubUsbMidi usbMidi;
-    StubFileSystem fileSystem;
+    DesktopFileSystem fileSystem;
     FileConfigManager configManager;
     ZeroCrcCalculator crc;
     SystemInfo systemInfo;

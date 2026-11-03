@@ -94,6 +94,7 @@ target_compile_options(meadowlark_core
 add_library(meadowlark_platform OBJECT
   source/AudioLock.cpp
   source/DesktopDisplayDriver.cpp
+  source/DesktopFileSystem.cpp
   source/eve/EveCoprocessor.cpp
   source/eve/EveRenderer.cpp
   source/hardware.cpp
@@ -127,3 +128,7 @@ target_link_libraries(layout_probe PRIVATE meadowlark_platform)
 # Hashes of the DSP fallbacks' outputs; tools/check_dsp.sh compares them with the ARM asm.
 add_executable(dsp_vectors tests/dsp_vectors.cpp)
 target_link_libraries(dsp_vectors PRIVATE meadowlark_platform)
+
+# DesktopFileSystem semantics; takes a scratch directory to work in.
+add_executable(fs_test tests/fs_test.cpp)
+target_link_libraries(fs_test PRIVATE meadowlark_platform)
