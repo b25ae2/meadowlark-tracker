@@ -7,6 +7,7 @@
 #include "Platform.h"
 #include "wavHeaderReader.h"
 
+#include <cstring>
 #include <limits>
 #include <stdint.h>
 
@@ -29,11 +30,6 @@ enum enTranferFileMode
 };
 
 #define READ_WRITE_BUFOR_SIZE 32640
-
-extern "C"
-{
-    extern void* memcpy(void* dst, const void* src, size_t count);
-}
 
 const uint16_t memoryReadPerPart = 512;
 // const uint16_t READ_WRITE_BUFOR_SIZE = 32768;
