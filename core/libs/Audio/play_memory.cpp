@@ -4,6 +4,7 @@
 #include "dspinst.h"
 #include "mtAudioEngine.h"
 #include "util_math.h"
+#include <algorithm>
 #include <cr_section_macros.h>
 
 float AudioPlayMemory::notes[NOTE_LOOKUP_SIZE];
