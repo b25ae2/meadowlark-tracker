@@ -11,6 +11,7 @@
 #include "fileManager.h"
 #include "fileTransfer.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>

@@ -10,6 +10,7 @@
 #include "PlatformDesktop.h"
 #include "Tracker.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>

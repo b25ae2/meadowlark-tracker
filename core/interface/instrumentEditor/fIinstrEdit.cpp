@@ -18,6 +18,7 @@
 #include "util_string.h"
 
 #include "log.h"
+#include <algorithm>
 #include <iterator>
 
 cInstrumentEditor instrumentEditor;

@@ -3,6 +3,8 @@
 #include "polyassert.h"
 #include <Recorder.h>
 
+#include <algorithm>
+
 uint32_t Recorder::DestinationChannelConfig::maxLength = 0;
 uint32_t Recorder::DestinationChannelConfig::length = 0;
 
