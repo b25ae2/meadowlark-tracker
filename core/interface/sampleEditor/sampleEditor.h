@@ -350,8 +350,10 @@ class cSampleEditor : public ModuleBase
     //*******************
     cSampleEditor()
     {
-        label[8] = { -1 };
-        bar[8] = { -1 };
+        // Was `label[8] = { -1 }; bar[8] = { -1 };`, out-of-bounds writes that landed
+        // on bar[0] and paramList[0]. Kept explicit so behaviour matches existing firmware
+        // (paramList[0] is also set by the loop below).
+        bar[0] = -1;
         for (int i = 0; i < kEffectPageParams; i++)
         {
             paramList[i] = -1;

@@ -51,6 +51,14 @@ Original repository: https://github.com/Sedeniono/tiny-optional
 #define TINY_OPTIONAL_x86
 #endif
 
+// _GLIBCXX_THROW_OR_ABORT is libstdc++-internal; libc++ (macOS) has no equivalent.
+#if defined(_GLIBCXX_THROW_OR_ABORT)
+  #define TINY_OPTIONAL_THROW_OR_ABORT(ex) _GLIBCXX_THROW_OR_ABORT(ex)
+#else
+  #include <cstdlib>
+  #define TINY_OPTIONAL_THROW_OR_ABORT(ex) std::abort()
+#endif
+
 #if (!defined(__cplusplus) || __cplusplus < 201703L) && (!defined(_MSVC_LANG) || _MSVC_LANG < 201703L)
   #error "The tiny::optional library requires at least C++17"
 #endif
@@ -60,7 +68,8 @@ Original repository: https://github.com/Sedeniono/tiny-optional
 #endif
 
 // https://stackoverflow.com/a/66249936
-#if (defined(__x86_64__) || defined(_M_X64)) /* Is it x64?*/
+// aarch64 (Linux and macOS) also keeps user-space addresses far below the x64 sentinel, so it shares that path.
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)) /* Is it x64 / arm64?*/
   #define TINY_OPTIONAL_x64
 #elif (defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)) /*Is it x86?*/
   #define TINY_OPTIONAL_x86
@@ -1361,7 +1370,7 @@ namespace impl
     [[nodiscard]] PayloadType & value() &
     {
       if (!has_value()) {
-        _GLIBCXX_THROW_OR_ABORT(std::bad_optional_access());
+        TINY_OPTIONAL_THROW_OR_ABORT(std::bad_optional_access());
       }
       return GetPayload();
     }
@@ -1369,7 +1378,7 @@ namespace impl
     [[nodiscard]] PayloadType const & value() const &
     {
       if (!has_value()) {
-        _GLIBCXX_THROW_OR_ABORT(std::bad_optional_access());
+        TINY_OPTIONAL_THROW_OR_ABORT(std::bad_optional_access());
       }
       return GetPayload();
     }
@@ -1377,7 +1386,7 @@ namespace impl
     [[nodiscard]] PayloadType && value() &&
     {
       if (!has_value()) {
-        _GLIBCXX_THROW_OR_ABORT(std::bad_optional_access());
+        TINY_OPTIONAL_THROW_OR_ABORT(std::bad_optional_access());
       }
       return std::move(GetPayload());
     }
@@ -1385,7 +1394,7 @@ namespace impl
     [[nodiscard]] PayloadType const && value() const &&
     {
       if (!has_value()) {
-        _GLIBCXX_THROW_OR_ABORT(std::bad_optional_access());
+        TINY_OPTIONAL_THROW_OR_ABORT(std::bad_optional_access());
       }
       return std::move(GetPayload());
     }

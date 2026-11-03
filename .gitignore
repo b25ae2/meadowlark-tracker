@@ -6,6 +6,7 @@ agt/
 core/build-*/
 platforms/mk66/build/
 platforms/imx/build-*/
+platforms/desktop/build*/
 editor-fx-sdk/build/
 *.axf
 *.lss

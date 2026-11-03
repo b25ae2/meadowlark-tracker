@@ -37,9 +37,13 @@
 
 inline int32_t Clip16(int32_t x)
 {
+#if defined(KINETISK)
     int32_t result;
     __asm("ssat %0, %1, %2" : "=r"(result) : "I"(16), "r"(x));
     return result;
+#else
+    return x > 32767 ? 32767 : (x < -32768 ? -32768 : x);
+#endif
 }
 
 #define MAKE_INTEGRAL_FRACTIONAL(x)                                                                \

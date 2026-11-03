@@ -32,7 +32,8 @@ class cConfigEditor : public ModuleBase
 
     cConfigEditor()
     {
-        label[8] = { -1 };
+        // Was `label[8] = { -1 };`: an out-of-bounds write that only re-set
+        // blankSpaceCover[0], which is already initialised to -1.
         editorInstrument = nullptr;
         frameControl = -1;
         popoutWindowLabel = -1;

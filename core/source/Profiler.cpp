@@ -2,7 +2,9 @@
 #include "config.h"
 #include "limits.h"
 #include "log.h"
+#ifndef PLATFORM_DESKTOP
 #include "malloc.h"
+#endif
 #include <polyassert.h>
 
 #include "Platform.h"
@@ -19,6 +21,19 @@ extern "C"
 }
 Profiler* Profiler::instance = nullptr;
 
+#ifdef PLATFORM_DESKTOP
+// The firmware version below allocates until malloc fails, which on a host with
+// overcommit means until the OOM killer steps in. Heap stats are not meaningful there.
+void Profiler::init()
+{
+    resetMeasuringAudio();
+}
+
+size_t Profiler::freeRamBytes()
+{
+    return 0;
+}
+#else
 void Profiler::init()
 {
     // allocate and then free all available memory for malloc to claim all space
@@ -56,10 +71,11 @@ size_t Profiler::freeRamBytes()
 {
     return mallinfo().fordblks;
 }
+#endif
 
 size_t Profiler::maxStackBytes()
 {
-#ifdef PLATFORM_IMX
+#if defined(PLATFORM_IMX) && !defined(PLATFORM_DESKTOP)
     const uint8_t* base = (uint8_t*)&_vStackBase;
     const uint8_t* top = (uint8_t*)&_vStackTop;
 

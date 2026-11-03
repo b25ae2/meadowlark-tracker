@@ -1,5 +1,6 @@
 #include "UsbOutput.h"
 #include "Platform.h"
+#include <cassert>
 #ifdef PLATFORM_IMX
 
 static int16_t audioUsbZeroBlock[AUDIO_BLOCK_SAMPLES] = {};

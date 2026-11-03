@@ -3,6 +3,7 @@
 
 #include "util_string.h"
 
+#include <cassert>
 #include <string.h>
 
 void FileBrowser::start(FileSystem* fileSystem, FileBrowserData* fileBrowserData)

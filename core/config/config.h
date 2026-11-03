@@ -1,6 +1,20 @@
 #ifndef CONFIG_CONFIG_H_
 #define CONFIG_CONFIG_H_
 
+#ifdef PLATFORM_DESKTOP
+// Host build: no interrupts or linker-placed memory banks. The platform layer
+// maps global interrupt masking onto the same lock that guards the audio thread.
+extern void disableGlobalInterrupts();
+extern void enableGlobalInterrupts();
+#define DISABLE_GLOBAL_INTERRUPTS() disableGlobalInterrupts()
+#define ENABLE_GLOBAL_INTERRUPTS()  enableGlobalInterrupts()
+
+#define DMAMEM
+#define AUDIO_CORE_FLASH
+#define AUDIO_CORE_RAM
+#define OCRAM_BSS_SECTION
+#define EXTERNAL_MEMORY_SECTION(name)
+#else
 #define DISABLE_GLOBAL_INTERRUPTS() __asm__ volatile("CPSID i" ::: "memory")
 #define ENABLE_GLOBAL_INTERRUPTS()  __asm__ volatile("CPSIE i" ::: "memory")
 
@@ -8,6 +22,8 @@
 #define AUDIO_CORE_FLASH  __attribute__((section(".audio_flash_functions"), used))
 #define AUDIO_CORE_RAM    __attribute__((section(".audio_ram_functions"), used))
 #define OCRAM_BSS_SECTION __attribute__((section(".bss.$RAM3"), used))
+#define EXTERNAL_MEMORY_SECTION(name) __attribute__((section(name), used))
+#endif
 
 static constexpr int kMaxFilesListLength = 256;
 static constexpr int kMaxFilePathLen = 255;

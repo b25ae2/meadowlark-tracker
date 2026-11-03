@@ -1671,7 +1671,7 @@ playerEngine::playerEngine()
 {
     // bazuje na zadeklarowanych wyzej obiektach silnika i na tym ze obiekty playerEngine beda
     // umieszczone w tablicy(instrumentPlayer) na tej podstawie jest wyznaczany index(nChannel)
-    nChannel = ((uint32_t)this - (uint32_t)instrumentPlayer) / sizeof(playerEngine);
+    nChannel = this - instrumentPlayer;
 
 #ifndef PLATFORM_IMX
     monoToStereoPtr = audioVoice.getMonoToStereo();

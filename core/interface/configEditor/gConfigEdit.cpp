@@ -940,9 +940,9 @@ void cConfigEditor::showDiagnosticInfo()
 
 #ifdef MEMORY_USAGE_INFO_ENABLED
     size_t freeBytes = Profiler::getInstance()->freeRamBytes();
-    snprintf(heapUsageText, sizeof(heapUsageText), "free heap: %d B", freeBytes);
+    snprintf(heapUsageText, sizeof(heapUsageText), "free heap: %u B", (unsigned)freeBytes);
     size_t maxStackBytes = Profiler::getInstance()->maxStackBytes();
-    snprintf(stackUsageText, sizeof(stackUsageText), "max stack: %d B", maxStackBytes);
+    snprintf(stackUsageText, sizeof(stackUsageText), "max stack: %u B", (unsigned)maxStackBytes);
 
     display.setControlText(memoryUsageLabelControl, heapUsageText);
     display.setControlText2(memoryUsageLabelControl, stackUsageText);

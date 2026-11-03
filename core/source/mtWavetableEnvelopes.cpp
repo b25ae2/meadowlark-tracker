@@ -202,6 +202,10 @@ void initWavetableEnvelopes()
                 }
             }
 
+            // powf(sinf(kPi), p) is NaN for non-integer p (sinf(kPi) is slightly negative).
+            // ARM float->int conversion turns NaN into 0, so pin that result explicitly.
+            if (std::isnan(y))
+                y = 0.0f;
             y = clampF(y, 0.0f, 1.0f);
             g_wtEnvelopeBank[shape][i] = (int16_t)(y * 32767.0f);
         }

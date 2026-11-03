@@ -3,6 +3,8 @@
 
 #include "config.h"
 #include "mtEnvelopeGenerator.h"
+#include <cassert>
+#include <cstddef>
 #include <stdint.h>
 
 //=====================================================================
@@ -83,6 +85,55 @@ constexpr int SAMPLE_CHANNELS = 1;
 #endif
 
 const uint32_t EDIT_BUFF_OFFSET = SAMPLE_MEMORY_SIZE - (2 * SAMPLE_CHANNELS * EDIT_BUFF_SIZE);
+
+#ifdef PLATFORM_DESKTOP
+extern int16_t externalRamSampleMemory[];
+
+// strInstrument is saved to disk with a fixed 32-bit layout that includes the sample
+// pointer. On 64-bit hosts this keeps the field 4 bytes wide by storing the address as
+// EXTERAL_MEMORY_ADDRESS + byte offset into the sample arena (the hardware's view).
+// Project loading always recomputes addresses, so the stored value is never trusted.
+class SampleAddress32
+{
+  public:
+    SampleAddress32() = default;
+    SampleAddress32(std::nullptr_t) : raw(0) {}
+    SampleAddress32(int16_t* ptr) { *this = ptr; }
+
+    SampleAddress32& operator=(int16_t* ptr)
+    {
+        if (ptr == nullptr)
+        {
+            raw = 0;
+            return *this;
+        }
+        const auto offset = reinterpret_cast<uint8_t*>(ptr) -
+                            reinterpret_cast<uint8_t*>(externalRamSampleMemory);
+        assert(offset >= 0 && offset <= static_cast<decltype(offset)>(SAMPLE_MEMORY_SIZE));
+        raw = EXTERAL_MEMORY_ADDRESS + static_cast<uint32_t>(offset);
+        return *this;
+    }
+
+    int16_t* get() const
+    {
+        if (raw == 0)
+            return nullptr;
+        return reinterpret_cast<int16_t*>(reinterpret_cast<uint8_t*>(externalRamSampleMemory) +
+                                          (raw - EXTERAL_MEMORY_ADDRESS));
+    }
+
+    operator int16_t*() const { return get(); }
+    explicit operator uint8_t*() const { return reinterpret_cast<uint8_t*>(get()); }
+    explicit operator void*() const { return get(); }
+
+  private:
+    uint32_t raw;
+};
+static_assert(sizeof(SampleAddress32) == 4);
+using SampleAddress = SampleAddress32;
+#else
+using SampleAddress = int16_t*;
+#endif
 
 static constexpr int kSampleTracks = 8;
 static constexpr int kMidiTrackFirstIdx = kSampleTracks;
@@ -603,7 +654,7 @@ struct strInstrument
         uint8_t type; //;
         char file_name[32];
 
-        int16_t* address;
+        SampleAddress address;
         uint32_t length; // = 0;
 
         uint16_t wavetable_window_size; // = 2048;

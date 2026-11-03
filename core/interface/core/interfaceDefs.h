@@ -9,7 +9,7 @@
 
 #include "interfaceFxDesc.h"
 
-#ifdef PLATFORM_IMX
+#ifdef FEATURE_SYNTH
 #define GUI_HANDLE_SYNTH 1
 #else
 #define GUI_HANDLE_SYNTH 0
