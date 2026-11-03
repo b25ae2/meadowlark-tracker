@@ -3,8 +3,9 @@
 #include "interruptsControl.h"
 #include "log.h"
 #include "string.h"
-#include <cassert>
 #include "wavHeaderReader.h"
+#include <algorithm>
+#include <cassert>
 #include <cstring>
 #include <limits>
 
