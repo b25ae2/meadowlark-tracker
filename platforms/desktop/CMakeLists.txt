@@ -132,7 +132,9 @@ if(MEADOWLARK_SDL)
   target_include_directories(meadowlark_input SYSTEM PRIVATE ${TOMLPP_INCLUDE_DIR})
   target_compile_definitions(meadowlark_input PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
   target_link_libraries(meadowlark_input PUBLIC meadowlark_core SDL3::SDL3)
-  target_compile_options(meadowlark_input PRIVATE -Wall -Wextra)
+  # Actions.cpp includes core's interface headers, which define static functions.
+  target_compile_options(meadowlark_input PRIVATE -Wall -Wextra
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-unneeded-internal-declaration>)
 
   # The application: SDL3 window and input.
   add_executable(meadowlark source/sdl/main.cpp)
