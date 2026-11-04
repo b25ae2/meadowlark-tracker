@@ -19,6 +19,7 @@ enum : ActionId
     kActionFullscreen,
     kActionScreenshot,
     kActionQuit, // same as closing the window
+    kActionPaste, // Shift + Copy, which is how the Mini pastes
     kActionEnd
 };
 

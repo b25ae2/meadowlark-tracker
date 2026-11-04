@@ -40,7 +40,8 @@ constexpr char kDefaultConfig[] = R"toml(# Meadowlark input bindings.
 #   play rec shift copy insert delete up down left right
 #   note instr fx1 fx2 (= vol) pattern menu middle fn1 fn2 fn3 fn4 plus10 plus1 minus1 minus10
 #   button0 ... button43 (any interface button by index)
-# and the desktop ones: power (hold to save and quit), fullscreen, screenshot, quit.
+# and the desktop ones: paste (Shift + Copy, as the Mini pastes), power (hold to save and
+# quit), fullscreen, screenshot, quit.
 #
 # A file only needs the actions it changes; the others keep these defaults unless
 # options.defaults is false. An empty list unbinds an action.
@@ -51,33 +52,17 @@ axis_press = 0.5       # axis travel (0..1) that presses a direction
 axis_release = 0.35    # and that releases it again
 motion_step = 40       # pixels of pointer motion per mouse:move* tap
 capture_mouse = false  # keep the pointer in the window (relative mode), for mouse:move*
+# SDL gamepad mappings (SDL_GameControllerDB format) that make a raw joystick a gamepad, so
+# pad:* names work for it. The uConsole's gamepad buttons and d-pad come as a joystick
+# SDL has no mapping for; its six buttons are taken as X A B Y Select Start. The GUID
+# includes the name's checksum, so the keyboard's "System Control" device, which shares
+# its IDs, stays a raw joystick.
+gamepad_mappings = [
+  "0300de1fedfe00000000000011010000,Clockwork uConsole Keyboard,x:b0,a:b1,b:b2,y:b3,back:b4,start:b5,leftx:a0,lefty:a1,platform:Linux,",
+]
 
+# The Tracker Mini's buttons on a keyboard and gamepad (laid out for the uConsole).
 [bindings]
-up      = ["key:Up"]
-down    = ["key:Down"]
-left    = ["key:Left"]
-right   = ["key:Right"]
-shift   = ["key:Left Shift", "key:Right Shift"]
-
-play    = ["key:Space"]
-rec     = ["key:R"]
-copy    = ["key:C"]
-insert  = ["key:Insert", "key:I"]
-delete  = ["key:Delete", "key:Backspace"]
-
-note    = ["key:F1"]
-instr   = ["key:F2"]
-fx1     = ["key:F3"]
-fx2     = ["key:F4"]
-pattern = ["key:F5"]
-
-menu    = ["key:Escape"]
-middle  = ["key:Return"]
-fn1     = ["key:F6"]
-fn2     = ["key:F7"]
-fn3     = ["key:F8"]
-fn4     = ["key:F9"]
-
 # The buttons under the screen, left to right like its labels.
 screen1 = ["key:1"]
 screen2 = ["key:2"]
@@ -88,10 +73,37 @@ screen6 = ["key:6"]
 screen7 = ["key:7"]
 screen8 = ["key:8"]
 
-plus10  = ["key:PageUp"]
-minus10 = ["key:PageDown"]
-plus1   = ["key:=", "key:Keypad +"]
-minus1  = ["key:-", "key:Keypad -"]
+up      = ["key:Up", "pad:lefty-", "pad:dpup"]
+down    = ["key:Down", "pad:lefty+", "pad:dpdown"]
+left    = ["key:Left", "pad:leftx-", "pad:dpleft"]
+right   = ["key:Right", "pad:leftx+", "pad:dpright"]
+middle  = ["key:Return", "pad:a"]
+
+note    = ["key:[", "key:F1"]
+instr   = ["key:]", "key:F2"]
+fx1     = ["key:/", "key:F3"]
+fx2     = ["key:-", "key:F4"]
+pattern = ["key:F5"]
+
+play    = ["key:Space", "pad:start"]
+rec     = ["key:R"]
+shift   = ["key:Left Shift", "key:Right Shift", "pad:y"]
+menu    = ["key:Escape", "pad:x"]
+insert  = ["key:I", "pad:back"]
+delete  = ["key:Backspace", "key:Delete", "pad:b"]
+copy    = ["key:C"]
+paste   = ["key:V"]
+
+fn1     = ["key:Tab"]
+fn2     = ["key:Q"]
+fn3     = ["key:W"]
+fn4     = ["key:E"]
+
+# Value buttons; with Shift they set the master volume. 9/0 coarse, O/P fine.
+minus10 = ["key:9"]
+plus10  = ["key:0"]
+minus1  = ["key:O"]
+plus1   = ["key:P"]
 
 power      = []
 fullscreen = ["key:F11"]
@@ -205,6 +217,22 @@ struct Loader
                 config.captureMouse = *value;
             else
                 warn(*node.node(), "options.capture_mouse must be true or false");
+        }
+        if (const toml::node_view<const toml::node> node = options["gamepad_mappings"])
+        {
+            if (const toml::array* list = node.as_array())
+            {
+                config.gamepadMappings.clear();
+                for (const toml::node& entry : *list)
+                {
+                    if (std::optional<std::string> mapping = entry.value<std::string>())
+                        config.gamepadMappings.push_back(*mapping);
+                    else
+                        warn(entry, "options.gamepad_mappings entries must be strings");
+                }
+            }
+            else
+                warn(*node.node(), "options.gamepad_mappings must be a list of strings");
         }
     }
 };

@@ -177,6 +177,12 @@ bool App::init()
         std::fprintf(stderr, "meadowlark: SDL_Init failed: %s\n", SDL_GetError());
         return false;
     }
+    // Before the first events, which announce the joysticks.
+    for (const std::string& mapping : inputConfig.gamepadMappings)
+    {
+        if (SDL_AddGamepadMapping(mapping.c_str()) < 0)
+            std::fprintf(stderr, "meadowlark: bad gamepad mapping \"%s\": %s\n", mapping.c_str(), SDL_GetError());
+    }
 
     SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     if (options.fullscreen)
@@ -521,6 +527,29 @@ void App::handleAction(input::ActionId action, bool pressed)
 
     switch (action)
     {
+        case input::kActionPaste:
+        {
+            // The Mini pastes with Shift + Copy; Shift goes down first, as a player's would.
+            static input::ActionId shift = 0;
+            static input::ActionId copy = 0;
+            if (!shift)
+            {
+                input::parseAction("shift", shift);
+                input::parseAction("copy", copy);
+            }
+            DesktopButtons& buttons = platform.desktopButtons();
+            if (pressed)
+            {
+                buttons.press(shift);
+                buttons.press(copy);
+            }
+            else
+            {
+                buttons.release(copy);
+                buttons.release(shift);
+            }
+            break;
+        }
         case input::kActionPower:
             // While quitting, the power button stays held until core powers off.
             if (!quitting)

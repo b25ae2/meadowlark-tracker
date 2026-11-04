@@ -19,6 +19,8 @@ struct InputConfig
     std::vector<Binding> bindings;
     SdlInput::Options options;
     bool captureMouse = false;
+    // SDL gamepad mappings to add (SDL_GameControllerDB lines), for pads SDL doesn't know.
+    std::vector<std::string> gamepadMappings;
 };
 
 const char* defaultInputConfig();

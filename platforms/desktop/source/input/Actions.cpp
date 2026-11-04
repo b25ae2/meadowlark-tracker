@@ -59,6 +59,7 @@ constexpr NamedAction kNames[] = {
     { "fullscreen", kActionFullscreen },
     { "screenshot", kActionScreenshot },
     { "quit", kActionQuit },
+    { "paste", kActionPaste },
 };
 
 bool equalsIgnoreCase(std::string_view a, std::string_view b)

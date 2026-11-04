@@ -275,8 +275,13 @@ void testConfig(const std::string& dir)
     CHECK(hasBinding(config, "play", { "key:Space" }));
     CHECK(hasBinding(config, "screen1", { "key:1" }) && hasBinding(config, "screen8", { "key:8" }));
     CHECK(hasBinding(config, "note", { "key:F1" }) && hasBinding(config, "fx2", { "key:F4" }));
-    CHECK(hasBinding(config, "fn1", { "key:F6" }));
-    CHECK(hasBinding(config, "shift", { "key:Right Shift" }));
+    CHECK(hasBinding(config, "note", { "key:[" }) && hasBinding(config, "fx2", { "key:-" }));
+    CHECK(hasBinding(config, "fn1", { "key:Tab" }) && hasBinding(config, "fn4", { "key:E" }));
+    CHECK(hasBinding(config, "minus10", { "key:9" }) && hasBinding(config, "plus1", { "key:P" }));
+    CHECK(hasBinding(config, "paste", { "key:V" }));
+    CHECK(hasBinding(config, "middle", { "pad:a" }) && hasBinding(config, "up", { "pad:lefty-" }));
+    CHECK(hasBinding(config, "shift", { "key:Right Shift" }) && hasBinding(config, "shift", { "pad:y" }));
+    CHECK(config.gamepadMappings.size() == 1);
     CHECK(hasBinding(config, "quit", { "key:Left Ctrl", "key:Q" }));
     CHECK(bindingCount(config, "power") == 0);
     CHECK(config.options.axisPress == 0.5f && !config.captureMouse);
@@ -286,6 +291,7 @@ void testConfig(const std::string& dir)
                     "[options]\n"
                     "axis_press = 0.6\n"
                     "capture_mouse = true\n"
+                    "gamepad_mappings = []\n"
                     "[bindings]\n"
                     "play = [\"pad:a\", \"joy:button3\", [\"pad:back\", \"pad:start\"]]\n"
                     "rec = []\n"
@@ -296,6 +302,7 @@ void testConfig(const std::string& dir)
     std::fflush(stdout);
     CHECK(input::loadInputConfig(path, config));
     CHECK(config.options.axisPress > 0.59f && config.options.axisPress < 0.61f && config.captureMouse);
+    CHECK(config.gamepadMappings.empty());
     CHECK(bindingCount(config, "play") == 3);
     CHECK(hasBinding(config, "play", { "pad:back", "pad:start" }));
     CHECK(!hasBinding(config, "play", { "key:Space" }));
@@ -315,7 +322,7 @@ void testConfig(const std::string& dir)
     CHECK(hasBinding(config, "play", { "key:Space" }));
     CHECK(hasBinding(config, "screen1", { "key:1" }) && hasBinding(config, "screen8", { "key:8" }));
     CHECK(hasBinding(config, "note", { "key:F1" }) && hasBinding(config, "fx2", { "key:F4" }));
-    CHECK(hasBinding(config, "fn1", { "key:F6" }));
+    CHECK(hasBinding(config, "fn1", { "key:Tab" }));
 }
 } // namespace
 
