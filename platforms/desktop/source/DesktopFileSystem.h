@@ -23,6 +23,10 @@
 // write, rename and delete inside them fails, and deleting card contents never follows a
 // symlink out of the card. They appear in browser listings (createFilesList, countContainedFiles) but not
 // where the firmware walks the card itself, and a real folder of the same name wins.
+//
+// Virtual files (addVirtualFile) put single host files into a card folder, read-only, such
+// as fonts generated at startup in /Fonts. They are listed in that folder (listDirContents
+// and the browsers) when it exists on the card, and a real file of the same name wins.
 
 #include "Platform.h"
 
@@ -46,6 +50,8 @@ class DesktopFileSystem : public FileSystem
     void addHostMount(const std::string& name, const std::string& hostPath);
     // Home (the user's home directory) and Computer (/).
     void addDefaultHostMounts();
+    // Shows hostPath as a read-only file at cardPath, e.g. "Fonts/Hack.ptfont".
+    void addVirtualFile(const std::string& cardPath, const std::string& hostPath);
 
     bool isSdCardInserted() override { return !rootPath.empty(); }
     void setMountEventCallback(CardStateChangeCallback funct) override { mountCallback = funct; }
@@ -140,10 +146,23 @@ class DesktopFileSystem : public FileSystem
         std::string hostPath;
     };
 
+    struct VirtualFile
+    {
+        std::string dir;  // card folder, as given
+        std::string name;
+        std::string key;  // whole path, lowercase, for matching
+        std::string hostPath;
+    };
+
     // Host path for a card path. With mustExist false the last component may be missing
     // (its parent must exist); it then keeps the given spelling. inMount reports whether the
     // path lies in a host mount (and is therefore read-only).
     bool resolve(const char* path, std::string& hostPath, bool mustExist = true, bool* inMount = nullptr) const;
+    // resolve() without the virtual files.
+    bool resolveOnCard(const char* path, std::string& hostPath, bool mustExist, bool* inMount) const;
+    const VirtualFile* findVirtualFile(const char* path) const;
+    // Adds the virtual files that belong in hostDir and aren't shadowed by a real entry.
+    void addVirtualEntries(const std::string& hostDir, std::vector<Entry>& entries) const;
     // Resolves a path that is about to be changed: fails for paths in host mounts.
     bool resolveWritable(const char* path, std::string& hostPath, bool mustExist = true) const;
     bool readDirectory(const std::string& hostDir, std::vector<Entry>& entries) const;
@@ -156,6 +175,7 @@ class DesktopFileSystem : public FileSystem
 
     std::string rootPath;
     std::vector<Mount> mounts;
+    std::vector<VirtualFile> virtualFiles;
     CardStateChangeCallback mountCallback = nullptr;
 
     std::vector<Entry> nesEntries;

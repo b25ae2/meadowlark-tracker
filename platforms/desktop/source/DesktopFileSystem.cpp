@@ -243,6 +243,99 @@ void DesktopFileSystem::addDefaultHostMounts()
     addHostMount("Computer", "/");
 }
 
+namespace
+{
+// A card path as "dir/name" in lowercase with FAT's trailing-character rule, for matching.
+std::string pathKey(const char* path)
+{
+    std::string key;
+    for (const char* p = path; *p != 0;)
+    {
+        while (*p == '/')
+        {
+            p++;
+        }
+        const char* start = p;
+        while (*p != 0 && *p != '/')
+        {
+            p++;
+        }
+        if (p > start)
+        {
+            std::string part = fatName(std::string(start, p));
+            for (char& c : part)
+            {
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            key += (key.empty() ? "" : "/") + part;
+        }
+    }
+    return key;
+}
+} // namespace
+
+void DesktopFileSystem::addVirtualFile(const std::string& cardPath, const std::string& hostPath)
+{
+    const size_t slash = cardPath.find_last_of('/');
+    VirtualFile file;
+    file.dir = slash == std::string::npos ? "" : cardPath.substr(0, slash);
+    file.name = slash == std::string::npos ? cardPath : cardPath.substr(slash + 1);
+    file.key = pathKey(cardPath.c_str());
+    file.hostPath = hostPath;
+    if (file.name.empty() || !pathExists(hostPath))
+    {
+        return;
+    }
+    virtualFiles.push_back(file);
+}
+
+const DesktopFileSystem::VirtualFile* DesktopFileSystem::findVirtualFile(const char* path) const
+{
+    if (virtualFiles.empty() || path == nullptr)
+    {
+        return nullptr;
+    }
+    const std::string key = pathKey(path);
+    for (const VirtualFile& file : virtualFiles)
+    {
+        if (file.key == key)
+        {
+            return &file;
+        }
+    }
+    return nullptr;
+}
+
+void DesktopFileSystem::addVirtualEntries(const std::string& hostDir, std::vector<Entry>& entries) const
+{
+    bool added = false;
+    for (const VirtualFile& file : virtualFiles)
+    {
+        std::string dir;
+        if (!resolveOnCard(file.dir.c_str(), dir, true, nullptr) || dir != hostDir)
+        {
+            continue;
+        }
+        const bool shadowed = std::any_of(entries.begin(), entries.end(), [&](const Entry& entry) {
+            return strcasecmp(entry.name.c_str(), file.name.c_str()) == 0;
+        });
+        struct stat st;
+        if (shadowed || ::stat(file.hostPath.c_str(), &st) != 0)
+        {
+            continue;
+        }
+        Entry entry;
+        entry.name = file.name;
+        entry.size = static_cast<uint64_t>(st.st_size);
+        entries.push_back(entry);
+        added = true;
+    }
+    if (added)
+    {
+        std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return naturalLess(a.name, b.name); });
+    }
+}
+
 bool DesktopFileSystem::resolveWritable(const char* path, std::string& hostPath, bool mustExist) const
 {
     bool inMount = false;
@@ -259,6 +352,27 @@ bool DesktopFileSystem::resolveWritable(const char* path, std::string& hostPath,
 }
 
 bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mustExist, bool* inMount) const
+{
+    if (resolveOnCard(path, hostPath, true, inMount))
+    {
+        return true;
+    }
+    if (!rootPath.empty())
+    {
+        if (const VirtualFile* file = findVirtualFile(path))
+        {
+            hostPath = file->hostPath;
+            if (inMount != nullptr)
+            {
+                *inMount = true; // read-only
+            }
+            return true;
+        }
+    }
+    return !mustExist && resolveOnCard(path, hostPath, false, inMount);
+}
+
+bool DesktopFileSystem::resolveOnCard(const char* path, std::string& hostPath, bool mustExist, bool* inMount) const
 {
     if (inMount != nullptr)
     {
@@ -405,6 +519,7 @@ bool DesktopFileSystem::readListing(const std::string& hostDir, std::vector<Entr
     {
         return false;
     }
+    addVirtualEntries(hostDir, entries);
     if (hostDir != rootPath)
     {
         return true;
@@ -1201,6 +1316,7 @@ void DesktopFileSystem::listDirContents(const char* dirPath,
         count = 0;
         return;
     }
+    addVirtualEntries(host, entries);
 
     int listPos = 0;
     for (const Entry& entry : entries)

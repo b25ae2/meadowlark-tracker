@@ -171,9 +171,20 @@ if(MEADOWLARK_SDL)
     target_link_libraries(meadowlark_midi PUBLIC ALSA::ALSA)
   endif()
 
+  # Fonts: fonts.toml, rendered with FreeType into the firmware's .ptfont format.
+  find_package(Freetype REQUIRED)
+  add_library(meadowlark_fonts STATIC
+    source/fonts/FontBuilder.cpp
+    source/fonts/FontConfig.cpp)
+  target_include_directories(meadowlark_fonts PUBLIC source)
+  target_include_directories(meadowlark_fonts SYSTEM PRIVATE ${TOMLPP_INCLUDE_DIR})
+  target_compile_definitions(meadowlark_fonts PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
+  target_link_libraries(meadowlark_fonts PUBLIC meadowlark_core Freetype::Freetype)
+  target_compile_options(meadowlark_fonts PRIVATE -Wall -Wextra)
+
   # The application: SDL3 window, input and sound.
   add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp source/audio/SdlAudioInput.cpp)
-  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input meadowlark_midi)
+  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input meadowlark_midi meadowlark_fonts)
   target_compile_options(meadowlark PRIVATE -Wall -Wextra)
   set_target_properties(meadowlark PROPERTIES ENABLE_EXPORTS ON)
 
@@ -204,6 +215,10 @@ if(MEADOWLARK_SDL)
   # MIDI ports, timing and midi.toml; --loopback also runs the system backend.
   add_executable(midi_test tests/midi_test.cpp)
   target_link_libraries(midi_test PRIVATE meadowlark_platform meadowlark_midi)
+
+  # .ptfont generation and fonts.toml; takes a scratch directory and a TTF/OTF file.
+  add_executable(font_test tests/font_test.cpp)
+  target_link_libraries(font_test PRIVATE meadowlark_platform meadowlark_fonts)
 
   # Button timing, bindings and input.toml; takes a scratch directory.
   add_executable(input_test tests/input_test.cpp)

@@ -8,6 +8,7 @@
 //              [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]
 //              [--audio-input auto|always|off]
 //              [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]
+//              [--font-config file] [--print-font-config]
 //
 // Closing the window holds the power button, so core saves the project to the workspace and
 // powers off, as on the Mini. A second close quits at once.
@@ -21,6 +22,8 @@
 #include "audio/AudioRenderer.h"
 #include "audio/SdlAudioInput.h"
 #include "audio/SdlAudioOutput.h"
+#include "ConfigPaths.h"
+#include "fonts/FontConfig.h"
 #include "input/Actions.h"
 #include "input/InputConfig.h"
 #include "input/InputResolver.h"
@@ -79,6 +82,7 @@ struct Options
     bool hostFolders = true;
     std::string midiConfig = midi::defaultMidiConfigPath();
     bool midi = true;
+    std::string fontConfig = fonts::defaultFontConfigPath();
 };
 
 void printUsage()
@@ -87,7 +91,8 @@ void printUsage()
                 "                  [--scale n] [--fullscreen] [--print-input-config]\n"
                 "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n"
                 "                  [--audio-input auto|always|off]\n"
-                "                  [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]\n");
+                "                  [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]\n"
+                "                  [--font-config file] [--print-font-config]\n");
 }
 
 class App
@@ -234,6 +239,11 @@ bool App::init()
         return false;
     }
     std::printf("meadowlark: SD card %s\n", options.sdRoot.empty() ? "(none)" : options.sdRoot.c_str());
+
+    // Before core starts: it lists /Fonts in its start tasks.
+    fonts::FontConfig fontConfig;
+    fonts::loadFontConfig(options.fontConfig, fontConfig);
+    fonts::installFonts(fontConfig, userCachePath("fonts"), platform.desktopFileSystem());
 
     tracker = Tracker::getInstance();
     tracker->getStartDisplayFunc()(&platform);
@@ -683,6 +693,13 @@ int main(int argc, char** argv)
             options.midiConfig = argv[++i];
         else if (std::strcmp(arg, "--no-midi") == 0)
             options.midi = false;
+        else if (std::strcmp(arg, "--font-config") == 0 && i + 1 < argc)
+            options.fontConfig = argv[++i];
+        else if (std::strcmp(arg, "--print-font-config") == 0)
+        {
+            std::fputs(fonts::defaultFontConfig(), stdout);
+            return 0;
+        }
         else if (std::strcmp(arg, "--print-midi-config") == 0)
         {
             std::fputs(midi::defaultMidiConfig(), stdout);

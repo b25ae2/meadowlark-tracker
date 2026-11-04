@@ -8,7 +8,7 @@ secondary. The firmware build (`make` at the repository root) is separate and un
 
 - Debian/Ubuntu: `tools/install-deps-linux.sh` (add `--planned` for the libraries later
   phases will need).
-- macOS: `brew install cmake ninja sdl3 tomlplusplus`.
+- macOS: `brew install cmake ninja sdl3 tomlplusplus freetype`.
 
 With `-DMEADOWLARK_SDL=OFF` neither SDL3 nor toml++ is needed, and on Linux
 `-DMEADOWLARK_PIPEWIRE=OFF` drops the PipeWire dependency (sound then goes through SDL).
@@ -43,7 +43,7 @@ platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config fil
                                    [--audio pipewire|sdl|none] [--audio-buffer frames]
                                    [--audio-input auto|always|off] [--no-host-folders]
                                    [--midi-config file] [--no-midi] [--list-midi]
-                                   [--print-midi-config]
+                                   [--print-midi-config] [--font-config file] [--print-font-config]
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
@@ -72,6 +72,7 @@ workspace and powers off (about 1.5 s); closing it again quits at once.
 ```sh
 platforms/desktop/build/meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
                                             [--press button@seconds[:hold] ...] [--midi-trace]
+                                            [--ptfont file]
 ```
 
 Runs the core for the given time (default 3 s) without a window or sound device, prints
@@ -80,6 +81,7 @@ how many audio blocks and display lists it produced, and can save the last frame
 100 ms, `--press menu@2:1.5` holds it for 1.5 s; presses go through the same path as the
 window's input, for scripted checks. `--midi-trace` turns on MIDI clock, transport and
 note output and prints every message core sends, with its audio block and offset.
+`--ptfont` adds a font file to the card's `/Fonts` and switches the display to it.
 
 ## Input
 
@@ -138,6 +140,33 @@ timed to the audio: a note or clock leaves when the sound rendered with it is he
 place within the audio block, so external synths stay in time with the tracker's own sound.
 `[timing] output_offset_ms` shifts that if a device responds late.
 
+## Fonts
+
+The tracker draws text with five bitmap fonts (14 and 17 px regular, 14 and 17 px bold,
+12 px regular); Config > General > Display font picks the built-in ones or a `.ptfont`
+file from the card's `/Fonts`. `fonts.toml`, next to `input.toml` (or `--font-config
+<file>`, `MEADOWLARK_FONT_CONFIG`), adds system fonts to that list: at startup each one is
+rendered from its TTF, OTF or TTC file with FreeType into `~/.cache/meadowlark/fonts`
+(`~/Library/Caches/Meadowlark/fonts` on macOS) and shown in `/Fonts` without being
+written to the card.
+
+```toml
+[[font]]
+name = "DejaVu Mono"
+regular = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+bold = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"  # optional: else emboldened
+
+[[font]]
+name = "Iosevka"
+regular = { file = "~/.local/share/fonts/iosevka/Iosevka-Regular.ttc", family = "Iosevka Term" }
+sizes = { regular14 = 13, bold14 = 13 }  # pixel sizes, only the ones to change
+```
+
+`meadowlark --print-font-config` prints the format. Cells follow the font's own glyphs, so a
+font with larger letters than the built-in Roboto Mono may not fit everywhere; smaller
+sizes help, and very large ones are refused (the firmware's limit is about 22 KB per size).
+The bold 17 size keeps the built-in transport icons.
+
 ## SD card
 
 A host directory stands in for the SD card:
@@ -168,6 +197,7 @@ platforms/desktop/build/eve_image_test           # JPEG/PNG decoding in the FT81
 platforms/desktop/build/audio_test [pipewire|sdl] # sound output runs in real time without
                                                   # underruns; silent unless --tone
 platforms/desktop/build/midi_test /tmp/midi      # MIDI ports, output timing, midi.toml
+platforms/desktop/build/font_test /tmp/fonts some.ttf # .ptfont generation, fonts.toml, /Fonts
 platforms/desktop/build/midi_test /tmp/midi --loopback # also through the system's MIDI
 platforms/desktop/build/audio_test pipewire --capture # also records the output's monitor and
                                                       # checks a quiet tone comes back

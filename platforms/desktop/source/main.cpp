@@ -4,17 +4,20 @@
 //
 //   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
 //                       [--press button@seconds[:hold] ...] [--no-host-folders] [--midi-trace]
+//                       [--ptfont file]
 //
 // seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot(). --press
 // presses a Mini button (input.toml action name, e.g. "down@2.5") at that time for hold
 // seconds (default 0.1), through the same path as the window's input. --midi-trace turns
 // on MIDI clock, transport and note output on both ports (after 1 s, once core has read its
-// config) and prints what core sends.
+// config) and prints what core sends. --ptfont puts a font file in the card's /Fonts and
+// switches the display to it at 1 s, as choosing it in Config would.
 
 #include "AudioLock.h"
 #include "CrashHandler.h"
 #include "PlatformDesktop.h"
 #include "PngWriter.h"
+#include "ThemeManager.h"
 #include "Tracker.h"
 #include "input/Actions.h"
 #include "mtMidi.h"
@@ -98,6 +101,7 @@ int main(int argc, char** argv)
     std::vector<ScriptedPress> presses;
     bool hostFolders = true;
     bool midiTrace = false;
+    std::string ptFont;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
@@ -119,6 +123,10 @@ int main(int argc, char** argv)
         else if (std::strcmp(argv[i], "--midi-trace") == 0)
         {
             midiTrace = true;
+        }
+        else if (std::strcmp(argv[i], "--ptfont") == 0 && i + 1 < argc)
+        {
+            ptFont = argv[++i];
         }
         else if (std::strcmp(argv[i], "--press") == 0 && i + 1 < argc)
         {
@@ -151,6 +159,14 @@ int main(int argc, char** argv)
         return 1;
     }
     std::printf("meadowlark: SD card %s\n", sdRoot.empty() ? "(none)" : sdRoot.c_str());
+    std::string ptFontName;
+    if (!ptFont.empty())
+    {
+        ptFontName = ptFont.substr(ptFont.find_last_of('/') + 1);
+        platform.desktopFileSystem().addVirtualFile("Fonts/" + ptFontName, ptFont);
+        ptFontName = ptFontName.substr(0, ptFontName.rfind('.'));
+    }
+    bool fontApplied = ptFont.empty();
 
     Tracker* tracker = Tracker::getInstance();
 
@@ -209,6 +225,21 @@ int main(int argc, char** argv)
             }
         }
         platform.desktopButtons().update();
+
+        if (!fontApplied && elapsed >= 1.0)
+        {
+            fontApplied = true;
+            ThemeManager::scanThemesAndFonts();
+            const char* const* names = ThemeManager::getFontNames();
+            int index = -1;
+            for (int n = 0; n < ThemeManager::getFontCount(); n++)
+            {
+                if (ptFontName == names[n])
+                    index = n;
+            }
+            const bool ok = index >= 0 && ThemeManager::applyFont(static_cast<uint8_t>(index));
+            std::printf("meadowlark: font %s %s\n", ptFontName.c_str(), ok ? "applied" : "did not load");
+        }
 
         if (!midiConfigured && elapsed >= 1.0)
         {
