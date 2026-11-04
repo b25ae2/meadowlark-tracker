@@ -99,12 +99,15 @@ add_library(meadowlark_platform OBJECT
   source/eve/EveCoprocessor.cpp
   source/eve/EveRenderer.cpp
   source/hardware.cpp
+  source/input/Actions.cpp
   source/platform_math.cpp
   source/PlatformDesktop.cpp
   source/PngWriter.cpp)
 target_include_directories(meadowlark_platform PUBLIC source)
 target_link_libraries(meadowlark_platform PUBLIC meadowlark_core)
-target_compile_options(meadowlark_platform PRIVATE -Wall -Wextra)
+# Actions.cpp includes core's interface headers, which define static functions.
+target_compile_options(meadowlark_platform PRIVATE -Wall -Wextra
+  $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-unneeded-internal-declaration>)
 
 find_package(Threads REQUIRED)
 target_link_libraries(meadowlark_platform PUBLIC Threads::Threads)
@@ -124,7 +127,6 @@ if(MEADOWLARK_SDL)
 
   # Input layer: SDL events -> bindings from input.toml -> Mini buttons and commands.
   add_library(meadowlark_input STATIC
-    source/input/Actions.cpp
     source/input/InputConfig.cpp
     source/input/InputResolver.cpp
     source/input/SdlInput.cpp)
@@ -132,9 +134,7 @@ if(MEADOWLARK_SDL)
   target_include_directories(meadowlark_input SYSTEM PRIVATE ${TOMLPP_INCLUDE_DIR})
   target_compile_definitions(meadowlark_input PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
   target_link_libraries(meadowlark_input PUBLIC meadowlark_core SDL3::SDL3)
-  # Actions.cpp includes core's interface headers, which define static functions.
-  target_compile_options(meadowlark_input PRIVATE -Wall -Wextra
-    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-unneeded-internal-declaration>)
+  target_compile_options(meadowlark_input PRIVATE -Wall -Wextra)
 
   # The application: SDL3 window and input.
   add_executable(meadowlark source/sdl/main.cpp)

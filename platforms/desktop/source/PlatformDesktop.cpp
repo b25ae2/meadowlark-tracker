@@ -4,6 +4,11 @@
 #include <cstring>
 #include <thread>
 
+// core's button handlers (mtActions.cpp). On IMX initHardware registers them.
+void onButtonPush(uint8_t n);
+void onButtonRelease(uint8_t n);
+void onButtonHold(uint8_t n);
+
 //------------------------------------------------------------------------------
 // DesktopTimer
 
@@ -85,6 +90,10 @@ PlatformDesktop::PlatformDesktop() : buttons(&timer), configManager(&fileSystem)
 {
     static const char kBuildId[] = "desktop";
     systemInfo.buildId = kBuildId;
+
+    buttons.setActionCallback(SwitchGroup::kPress, onButtonPush);
+    buttons.setActionCallback(SwitchGroup::kRelease, onButtonRelease);
+    buttons.setActionCallback(SwitchGroup::kHold, onButtonHold);
 }
 
 void PlatformDesktop::setPowerMode(bool mode)

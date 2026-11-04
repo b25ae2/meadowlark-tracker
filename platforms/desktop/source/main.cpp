@@ -3,13 +3,17 @@
 // produced. The display is rendered by the software FT812, so the last frame can be saved.
 //
 //   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
+//                       [--press button@seconds ...]
 //
-// seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot().
+// seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot(). --press
+// presses a Mini button (input.toml action name, e.g. "down@2.5") for 100 ms at that time,
+// through the same path as the window's input.
 
 #include "AudioLock.h"
 #include "PlatformDesktop.h"
 #include "PngWriter.h"
 #include "Tracker.h"
+#include "input/Actions.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +23,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -26,6 +31,14 @@ constexpr int kAudioBlockSamples = 128;
 constexpr double kSampleRate = 44100.0;
 
 PlatformDesktop platform;
+
+struct ScriptedPress
+{
+    input::ActionId button;
+    double at;
+    bool pressed = false;
+    bool released = false;
+};
 
 void renderAudioBlock(Tracker* tracker, int16_t* left, int16_t* right)
 {
@@ -41,6 +54,7 @@ int main(int argc, char** argv)
     double seconds = 3.0;
     const char* screenshotPath = nullptr;
     std::string sdRoot = DesktopFileSystem::defaultRoot();
+    std::vector<ScriptedPress> presses;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
@@ -54,6 +68,19 @@ int main(int argc, char** argv)
         else if (std::strcmp(argv[i], "--no-sd") == 0)
         {
             sdRoot.clear();
+        }
+        else if (std::strcmp(argv[i], "--press") == 0 && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            size_t at = spec.find('@');
+            input::ActionId button = 0;
+            if (at == std::string::npos || !input::parseAction(spec.substr(0, at), button) ||
+                !input::isButtonAction(button))
+            {
+                std::fprintf(stderr, "meadowlark: --press wants <button>@<seconds>, got %s\n", spec.c_str());
+                return 2;
+            }
+            presses.push_back({ button, std::atof(spec.c_str() + at + 1) });
         }
         else
         {
@@ -102,6 +129,22 @@ int main(int argc, char** argv)
             audioBlocks++;
             nextBlock += std::chrono::duration_cast<clock::duration>(blockPeriod);
         }
+
+        const double elapsed = std::chrono::duration<double>(clock::now() - start).count();
+        for (ScriptedPress& press : presses)
+        {
+            if (!press.pressed && elapsed >= press.at)
+            {
+                press.pressed = true;
+                platform.desktopButtons().press(press.button);
+            }
+            else if (press.pressed && !press.released && elapsed >= press.at + 0.1)
+            {
+                press.released = true;
+                platform.desktopButtons().release(press.button);
+            }
+        }
+        platform.desktopButtons().update();
 
         tracker->update();
         loopIterations++;
