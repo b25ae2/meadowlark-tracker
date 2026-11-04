@@ -1,11 +1,13 @@
 // Meadowlark with an SDL3 window: the software FT812's frames scaled into the window, and
 // keyboard, gamepad, joystick and mouse input mapped to the Tracker Mini's buttons through
-// input.toml. Sound goes to PipeWire on Linux and through SDL elsewhere.
+// input.toml. Sound goes to PipeWire on Linux and through SDL elsewhere; MIDI to the ALSA
+// sequencer or CoreMIDI, connected as midi.toml says.
 //
 //   meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
 //              [--scale n] [--fullscreen] [--print-input-config]
 //              [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]
 //              [--audio-input auto|always|off]
+//              [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]
 //
 // Closing the window holds the power button, so core saves the project to the workspace and
 // powers off, as on the Mini. A second close quits at once.
@@ -23,6 +25,9 @@
 #include "input/InputConfig.h"
 #include "input/InputResolver.h"
 #include "input/SdlInput.h"
+#include "midi/MidiBackend.h"
+#include "midi/MidiConfig.h"
+#include "midi/MidiScheduler.h"
 
 #ifdef MEADOWLARK_HAVE_PIPEWIRE
 #include "audio/PipeWireInput.h"
@@ -72,6 +77,8 @@ struct Options
     // auto: open the capture device when the Sample Recorder first configures its input.
     std::string audioInput = "auto";
     bool hostFolders = true;
+    std::string midiConfig = midi::defaultMidiConfigPath();
+    bool midi = true;
 };
 
 void printUsage()
@@ -79,7 +86,8 @@ void printUsage()
     std::printf("usage: meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]\n"
                 "                  [--scale n] [--fullscreen] [--print-input-config]\n"
                 "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n"
-                "                  [--audio-input auto|always|off]\n");
+                "                  [--audio-input auto|always|off]\n"
+                "                  [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]\n");
 }
 
 class App
@@ -102,6 +110,8 @@ class App
     void startAudio();
     void stopAudio();
     void startCapture();
+    void startMidi();
+    void stopMidi();
     void renderAudioBlock(int16_t* left, int16_t* right, int frames);
     void renderAudioInline();
 
@@ -118,6 +128,11 @@ class App
     // Render thread only: the block core reads as its I2S input, and the USB input's.
     int16_t inputBlock[kAudioBlockSamples * 2] = {};
     int16_t usbInputBlock[kAudioBlockSamples * 2] = {};
+
+    std::unique_ptr<midi::MidiBackend> midiBackend;
+    std::unique_ptr<midi::MidiConnector> midiConnector;
+    midi::MidiScheduler midiScheduler;
+    uint64_t nextMidiScan = 0;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -136,7 +151,9 @@ class App
 
 App::~App()
 {
+    // Audio first: the render thread sends MIDI.
     stopAudio();
+    stopMidi();
     if (texture)
         SDL_DestroyTexture(texture);
     if (renderer)
@@ -216,6 +233,7 @@ bool App::init()
     tracker->getStartDisplayFunc()(&platform);
     tracker->init(&platform);
     nextAudioBlock = std::chrono::steady_clock::now();
+    startMidi();
     startAudio();
     if (options.audioInput == "always")
         startCapture();
@@ -299,6 +317,64 @@ void App::startCapture()
     std::fprintf(stderr, "meadowlark: no audio input, recording gets silence\n");
 }
 
+// The firmware's two ports appear in the system as "Meadowlark USB" and "Meadowlark Jack";
+// the connector links them to the devices midi.toml names, checking for new ones every
+// second from the main loop.
+void App::startMidi()
+{
+    if (!options.midi)
+    {
+        std::printf("meadowlark: midi off\n");
+        return;
+    }
+    midi::MidiConfig config;
+    midi::loadMidiConfig(options.midiConfig, config);
+    if (!config.enabled)
+    {
+        std::printf("meadowlark: midi off (midi.toml)\n");
+        return;
+    }
+
+    std::unique_ptr<midi::MidiBackend> backend = midi::createMidiBackend();
+    if (!backend || !backend->start([](int port, const midi::Message& message) {
+            platform.midiPort(port).input().push(message);
+        }))
+    {
+        std::fprintf(stderr, "meadowlark: no MIDI\n");
+        return;
+    }
+    midiBackend = std::move(backend);
+    std::printf("meadowlark: midi %s\n", midiBackend->name());
+
+    // Messages follow the audio: due when the block being rendered is heard. Without a sound
+    // device the renderer never reads, so there is no play time and they go out at once.
+    midiScheduler.start([this](int port, const midi::Message& message) { midiBackend->send(port, message); },
+                        [this] { return audioRenderer.playTime(audioRenderer.framesRendered()); },
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                          std::chrono::duration<double, std::milli>(config.outputOffsetMs)));
+    for (int port = 0; port < midi::kPortCount; port++)
+        platform.midiPort(port).setSink(&midiScheduler);
+
+    midiConnector = std::make_unique<midi::MidiConnector>(*midiBackend, config);
+    midiConnector->update();
+    nextMidiScan = SDL_GetTicks() + 1000;
+}
+
+void App::stopMidi()
+{
+    if (!midiBackend)
+        return;
+    for (int port = 0; port < midi::kPortCount; port++)
+        platform.midiPort(port).setSink(nullptr);
+    midiScheduler.stop();
+    midiConnector.reset();
+    midiBackend->stop();
+    midiBackend.reset();
+    std::printf("meadowlark: midi %llu messages sent, worst %.1f ms late\n",
+                static_cast<unsigned long long>(midiScheduler.messagesSent()),
+                midiScheduler.worstLatenessUs() / 1000.0);
+}
+
 void App::stopAudio()
 {
     if (audioInput)
@@ -348,6 +424,7 @@ void App::renderAudioBlock(int16_t* left, int16_t* right, int frames)
         }
     }
 
+    platform.desktopTimer().markAudioBlockStart();
     AudioLock::acquire();
     if (withInput)
         tracker->updateInputAudioBuffers(inputBlock, usbInputBlock, frames);
@@ -376,6 +453,11 @@ void App::run()
             renderAudioInline();
         if (platform.desktopCodec().takeInputRequest())
             startCapture();
+        if (midiConnector && SDL_GetTicks() >= nextMidiScan)
+        {
+            midiConnector->update();
+            nextMidiScan = SDL_GetTicks() + 1000;
+        }
         platform.desktopButtons().update();
         tracker->update();
 
@@ -568,6 +650,25 @@ int main(int argc, char** argv)
             options.audioInput = argv[++i];
         else if (std::strcmp(arg, "--no-host-folders") == 0)
             options.hostFolders = false;
+        else if (std::strcmp(arg, "--midi-config") == 0 && i + 1 < argc)
+            options.midiConfig = argv[++i];
+        else if (std::strcmp(arg, "--no-midi") == 0)
+            options.midi = false;
+        else if (std::strcmp(arg, "--print-midi-config") == 0)
+        {
+            std::fputs(midi::defaultMidiConfig(), stdout);
+            return 0;
+        }
+        else if (std::strcmp(arg, "--list-midi") == 0)
+        {
+            midi::MidiConfig config;
+            midi::loadMidiConfig(options.midiConfig, config);
+            std::unique_ptr<midi::MidiBackend> backend = midi::createMidiBackend();
+            if (!backend || !backend->start([](int, const midi::Message&) {}))
+                return 1;
+            midi::printMidiPorts(*backend, config);
+            return 0;
+        }
         else if (std::strcmp(arg, "--print-input-config") == 0)
         {
             std::fputs(input::defaultInputConfig(), stdout);

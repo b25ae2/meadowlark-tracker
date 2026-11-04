@@ -41,6 +41,34 @@ uint32_t DesktopTimer::clockCycles()
         .count());
 }
 
+namespace
+{
+thread_local bool inAudioBlock = false;
+thread_local uint32_t audioBlockStartUs = 0;
+thread_local uint32_t scheduledMidiDelayUs = 0;
+} // namespace
+
+void DesktopTimer::markAudioBlockStart()
+{
+    inAudioBlock = true;
+    audioBlockStartUs = micros();
+}
+
+void DesktopTimer::scheduleMidiClockUs(uint32_t delayUs, void (*callback)())
+{
+    if (!callback)
+        return;
+    // core asks for the delay from now; the scheduler wants it from the block's start.
+    scheduledMidiDelayUs = inAudioBlock ? micros() - audioBlockStartUs + delayUs : 0;
+    callback();
+    scheduledMidiDelayUs = 0;
+}
+
+uint32_t DesktopTimer::midiDelayUs()
+{
+    return scheduledMidiDelayUs;
+}
+
 //------------------------------------------------------------------------------
 // DesktopCodec
 

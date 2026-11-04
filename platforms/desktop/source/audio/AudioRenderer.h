@@ -13,11 +13,13 @@
 // the largest request plus a block, since anything smaller underruns on every callback.
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -48,6 +50,13 @@ class AudioRenderer
     uint64_t underruns() const { return underrunCount.load(std::memory_order_relaxed); }
     uint64_t blocksRendered() const { return blockCount.load(std::memory_order_relaxed); }
 
+    // Frames rendered since start(): while a block renders, the index of its first frame.
+    uint64_t framesRendered() const { return writePos.load(std::memory_order_acquire); }
+    // Roughly when a frame will be heard, from the latest read(): the frames it took start
+    // playing one request later (a device period in flight). Any thread; nullopt until the
+    // backend has read once.
+    std::optional<std::chrono::steady_clock::time_point> playTime(uint64_t frame) const;
+
   private:
     void run();
     size_t filled() const;
@@ -69,6 +78,10 @@ class AudioRenderer
     std::atomic<uint64_t> underrunCount{ 0 };
     std::atomic<uint64_t> blockCount{ 0 };
     std::atomic<size_t> largestReadFrames{ 0 };
+    // The latest read()'s first frame and when it plays, as a seqlock (odd while written).
+    std::atomic<uint32_t> anchorSequence{ 0 };
+    std::atomic<uint64_t> anchorFrame{ 0 };
+    std::atomic<int64_t> anchorTimeNs{ 0 }; // steady_clock; 0: no read yet
     int16_t left[kBlockFrames] = {};
     int16_t right[kBlockFrames] = {};
 };

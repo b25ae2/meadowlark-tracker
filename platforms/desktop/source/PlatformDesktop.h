@@ -4,15 +4,17 @@
 //
 // The display is a software FT812 (DesktopDisplayDriver), the SD card a host directory
 // (DesktopFileSystem) and the buttons are fed by the front end's input layer
-// (DesktopButtons). Everything else except the clock is still a safe stub; later phases
-// replace them: MIDI (phase 6). Audio output is the front end's (audio/AudioRenderer.h);
-// DesktopCodec only turns the firmware's volume and mute into a gain.
+// (DesktopButtons), and the MIDI ports queue messages for the front end's MIDI backend
+// (midi/MidiPorts.h). Everything else except the clock is still a safe stub. Audio output
+// is the front end's (audio/AudioRenderer.h); DesktopCodec turns the firmware's volume, mute
+// and input gain into gains.
 
 #include "ConfigManager.h"
 #include "DesktopButtons.h"
 #include "DesktopDisplayDriver.h"
 #include "DesktopFileSystem.h"
 #include "Platform.h"
+#include "midi/MidiPorts.h"
 
 #include <atomic>
 #include <chrono>
@@ -28,6 +30,16 @@ class DesktopTimer : public Timer
     // Reported in nanoseconds; Profiler only uses differences divided by clockCyclesPerUs().
     uint32_t clockCycles() override;
     uint32_t clockCyclesPerUs() override { return 1000; }
+
+    // The firmware delays a MIDI clock that falls inside an audio block with a hardware timer
+    // until its place in the block. Here blocks render ahead of time, so the clock is sent at
+    // once and carries the delay instead (midiDelayUs()), for the MIDI scheduler to apply
+    // relative to the block's playback time.
+    void scheduleMidiClockUs(uint32_t delayUs, void (*callback)()) override;
+    // Render thread, before core renders a block: where scheduled clocks' delays count from.
+    void markAudioBlockStart();
+    // While a scheduled clock is being sent: its offset into the audio block; otherwise 0.
+    static uint32_t midiDelayUs();
 
   private:
     std::chrono::steady_clock::time_point start;
@@ -157,40 +169,6 @@ class StubUsbAudio : public UsbAudio
     void finishFillData() override {}
 };
 
-class StubUartMidi : public UartMidi
-{
-  public:
-    bool isReadAvailable() override { return false; }
-    void read() override {}
-    void sendRealTime(MessageType) override {}
-    void sendControlChange(uint8_t, uint8_t, uint8_t) override {}
-    void sendProgramChange(uint8_t, uint8_t) override {}
-    void sendAfterTouch(uint8_t, uint8_t) override {}
-    void sendPolyPressure(uint8_t, uint8_t, uint8_t) override {}
-    void sendPitchBend(int, uint8_t) override {}
-    void sendNoteOn(uint8_t, uint8_t, uint8_t) override {}
-    void sendNoteOff(uint8_t, uint8_t, uint8_t) override {}
-    void init() override {}
-    void setReceiveActions(MidiReceiveActions*) override {}
-    void setReceiveNoteOnAction(void (*)(uint8_t, uint8_t, uint8_t)) override {}
-};
-
-class StubUsbMidi : public UsbMidi
-{
-  public:
-    bool isReadAvailable() override { return false; }
-    void read() override {}
-    void sendRealTime(MessageType) override {}
-    void sendControlChange(uint8_t, uint8_t, uint8_t) override {}
-    void sendProgramChange(uint8_t, uint8_t) override {}
-    void sendAfterTouch(uint8_t, uint8_t) override {}
-    void sendPolyPressure(uint8_t, uint8_t, uint8_t) override {}
-    void sendPitchBend(int, uint8_t) override {}
-    void sendNoteOn(uint8_t, uint8_t, uint8_t) override {}
-    void sendNoteOff(uint8_t, uint8_t, uint8_t) override {}
-    void setReceiveActions(MidiReceiveActions*) override {}
-};
-
 // Same as the Mini: settings live in /trackerConfig on the "SD card".
 class FileConfigManager : public ConfigManager
 {
@@ -261,6 +239,9 @@ class PlatformDesktop : public Platform
     // The Mini's power button: held for 1.5 s, core saves the project and powers off.
     void setPowerButton(bool pressed);
     bool isPowerButtonPressed() const { return powerButtonPressed; }
+    // The MIDI ports (midi::kPortUsb, midi::kPortJack): incoming queue and outgoing sink.
+    midi::PortIo& midiPort(int port) { return port == midi::kPortJack ? uartMidi.io() : usbMidi.io(); }
+    DesktopTimer& desktopTimer() { return timer; }
 
   private:
     DesktopTimer timer;
@@ -273,8 +254,8 @@ class PlatformDesktop : public Platform
     StubEncoder encoder;
     DesktopDisplayDriver display;
     StubUsbAudio usbAudio;
-    StubUartMidi uartMidi;
-    StubUsbMidi usbMidi;
+    midi::DesktopUartMidi uartMidi;
+    midi::DesktopUsbMidi usbMidi;
     DesktopFileSystem fileSystem;
     FileConfigManager configManager;
     ZeroCrcCalculator crc;

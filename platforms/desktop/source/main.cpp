@@ -3,11 +3,13 @@
 // produced. The display is rendered by the software FT812, so the last frame can be saved.
 //
 //   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
-//                       [--press button@seconds[:hold] ...] [--no-host-folders]
+//                       [--press button@seconds[:hold] ...] [--no-host-folders] [--midi-trace]
 //
 // seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot(). --press
 // presses a Mini button (input.toml action name, e.g. "down@2.5") at that time for hold
-// seconds (default 0.1), through the same path as the window's input.
+// seconds (default 0.1), through the same path as the window's input. --midi-trace turns
+// on MIDI clock, transport and note output on both ports (after 1 s, once core has read its
+// config) and prints what core sends.
 
 #include "AudioLock.h"
 #include "CrashHandler.h"
@@ -15,6 +17,8 @@
 #include "PngWriter.h"
 #include "Tracker.h"
 #include "input/Actions.h"
+#include "mtMidi.h"
+#include "mtStructs.h"
 
 #include <algorithm>
 #include <chrono>
@@ -42,12 +46,46 @@ struct ScriptedPress
     bool released = false;
 };
 
+// Prints outgoing MIDI with the audio block it was sent in and its offset into the block.
+class TraceSink : public midi::Sink
+{
+  public:
+    uint64_t block = 0;
+    uint64_t clocks = 0;
+    uint64_t firstClockBlock = 0;
+    uint64_t lastClockBlock = 0;
+    uint32_t lastClockDelayUs = 0;
+
+    void send(int port, const midi::Message& message, uint32_t delayUs) override
+    {
+        if (message.status == 0xF8)
+        {
+            if (clocks++ == 0)
+                firstClockBlock = block;
+            lastClockBlock = block;
+            lastClockDelayUs = delayUs;
+            if (clocks > 4)
+                return; // just the first few
+        }
+        std::printf("midi %-4s block %6llu +%4u us: %02X %02X %02X\n",
+                    midi::portName(port),
+                    static_cast<unsigned long long>(block),
+                    delayUs,
+                    message.status,
+                    message.data1,
+                    message.data2);
+    }
+};
+TraceSink traceSink;
+
 void renderAudioBlock(Tracker* tracker, int16_t* left, int16_t* right)
 {
     // Stand-in for the audio interrupt: the block renders with the main loop locked out.
+    platform.desktopTimer().markAudioBlockStart();
     AudioLock::acquire();
     tracker->updateAudioBuffers(left, right, kAudioBlockSamples);
     AudioLock::release();
+    traceSink.block++;
 }
 } // namespace
 
@@ -59,6 +97,7 @@ int main(int argc, char** argv)
     std::string sdRoot = DesktopFileSystem::defaultRoot();
     std::vector<ScriptedPress> presses;
     bool hostFolders = true;
+    bool midiTrace = false;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
@@ -76,6 +115,10 @@ int main(int argc, char** argv)
         else if (std::strcmp(argv[i], "--no-host-folders") == 0)
         {
             hostFolders = false;
+        }
+        else if (std::strcmp(argv[i], "--midi-trace") == 0)
+        {
+            midiTrace = true;
         }
         else if (std::strcmp(argv[i], "--press") == 0 && i + 1 < argc)
         {
@@ -116,6 +159,13 @@ int main(int argc, char** argv)
 
     std::printf("meadowlark: initialising core\n");
     tracker->init(&platform);
+    if (midiTrace)
+    {
+        for (int port = 0; port < midi::kPortCount; port++)
+            platform.midiPort(port).setSink(&traceSink);
+    }
+    // The interface reads the saved config in its start tasks, after the first updates.
+    bool midiConfigured = !midiTrace;
 
     std::printf("meadowlark: running headless for %.1f s\n", seconds);
 
@@ -160,6 +210,16 @@ int main(int argc, char** argv)
         }
         platform.desktopButtons().update();
 
+        if (!midiConfigured && elapsed >= 1.0)
+        {
+            midiConfigured = true;
+            AudioLock::acquire();
+            mtConfig.midi.clkOut = clockOut_usb_and_jack;
+            mtConfig.midi.transportOut = clockOut_usb_and_jack;
+            mtConfig.midi.notesOutMode = notesOut_mode_usb_and_jack;
+            AudioLock::release();
+        }
+
         tracker->update();
         loopIterations++;
 
@@ -185,6 +245,14 @@ int main(int argc, char** argv)
     std::printf("  display-list words   : %llu\n", static_cast<unsigned long long>(eveStats.displayListWords));
     std::printf("  unknown commands     : %llu\n", static_cast<unsigned long long>(eveStats.unknownCommands));
     std::printf("  RAM_G bytes uploaded : %llu\n", static_cast<unsigned long long>(display.ramgBytesWritten));
+    if (midiTrace && traceSink.clocks > 1)
+    {
+        // Clocks are counted on both ports.
+        const double span = (traceSink.lastClockBlock - traceSink.firstClockBlock) * kAudioBlockSamples / kSampleRate;
+        std::printf("  midi clocks          : %llu per port, %.2f per second\n",
+                    static_cast<unsigned long long>(traceSink.clocks / 2),
+                    (traceSink.clocks / 2 - 1) / span);
+    }
 
     if (screenshotPath != nullptr)
     {

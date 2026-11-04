@@ -1,6 +1,7 @@
 #include "InputConfig.h"
 
 #include "Actions.h"
+#include "ConfigPaths.h"
 
 #include <toml++/toml.hpp>
 
@@ -222,16 +223,7 @@ const char* defaultInputConfig()
 
 std::string defaultInputConfigPath()
 {
-    if (const char* path = std::getenv("MEADOWLARK_INPUT_CONFIG"); path && *path)
-        return path;
-    const char* home = std::getenv("HOME");
-#ifdef __APPLE__
-    return std::string(home ? home : ".") + "/Library/Application Support/Meadowlark/input.toml";
-#else
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-        return std::string(xdg) + "/meadowlark/input.toml";
-    return std::string(home ? home : ".") + "/.config/meadowlark/input.toml";
-#endif
+    return userConfigPath("input.toml", "MEADOWLARK_INPUT_CONFIG");
 }
 
 bool loadInputConfig(const std::string& path, InputConfig& config)

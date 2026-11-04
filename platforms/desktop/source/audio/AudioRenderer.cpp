@@ -19,6 +19,7 @@ void AudioRenderer::start(RenderBlock render, int bufferFrames)
     readPos = 0;
     underrunCount = 0;
     blockCount = 0;
+    anchorTimeNs = 0;
 
     while (filled() + kBlockFrames <= target.load())
         renderOneBlock();
@@ -108,6 +109,37 @@ void AudioRenderer::read(int16_t* interleaved, size_t frames)
     }
     readPos.store(start + count, std::memory_order_release);
 
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const int64_t playsAt = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count() +
+                            static_cast<int64_t>(frames) * 1000000000 / kSampleRate;
+    anchorSequence.fetch_add(1, std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_release);
+    anchorFrame.store(start, std::memory_order_relaxed);
+    anchorTimeNs.store(playsAt, std::memory_order_relaxed);
+    anchorSequence.fetch_add(1, std::memory_order_release);
+
     if (waiting.load(std::memory_order_relaxed))
         wake.notify_one();
+}
+
+std::optional<std::chrono::steady_clock::time_point> AudioRenderer::playTime(uint64_t frame) const
+{
+    uint64_t baseFrame = 0;
+    int64_t baseNs = 0;
+    for (;;)
+    {
+        const uint32_t before = anchorSequence.load(std::memory_order_acquire);
+        baseFrame = anchorFrame.load(std::memory_order_relaxed);
+        baseNs = anchorTimeNs.load(std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if ((before & 1) == 0 && anchorSequence.load(std::memory_order_relaxed) == before)
+            break;
+    }
+    if (baseNs == 0)
+        return std::nullopt;
+
+    const int64_t offsetFrames = static_cast<int64_t>(frame - baseFrame);
+    const int64_t ns = baseNs + offsetFrames * 1000000000 / kSampleRate;
+    return std::chrono::steady_clock::time_point(
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::nanoseconds(ns)));
 }

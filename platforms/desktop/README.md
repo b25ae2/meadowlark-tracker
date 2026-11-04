@@ -42,6 +42,8 @@ platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config fil
                                    [--scale n] [--fullscreen] [--print-input-config]
                                    [--audio pipewire|sdl|none] [--audio-buffer frames]
                                    [--audio-input auto|always|off] [--no-host-folders]
+                                   [--midi-config file] [--no-midi] [--list-midi]
+                                   [--print-midi-config]
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
@@ -69,14 +71,15 @@ workspace and powers off (about 1.5 s); closing it again quits at once.
 
 ```sh
 platforms/desktop/build/meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
-                                            [--press button@seconds[:hold] ...]
+                                            [--press button@seconds[:hold] ...] [--midi-trace]
 ```
 
 Runs the core for the given time (default 3 s) without a window or sound device, prints
 how many audio blocks and display lists it produced, and can save the last frame as PNG.
 `--press down@2.5` presses a Mini button (an `input.toml` action name) at that time for
 100 ms, `--press menu@2:1.5` holds it for 1.5 s; presses go through the same path as the
-window's input, for scripted checks.
+window's input, for scripted checks. `--midi-trace` turns on MIDI clock, transport and
+note output and prints every message core sends, with its audio block and offset.
 
 ## Input
 
@@ -107,6 +110,34 @@ the eight buttons under the screen (`screen1`-`screen8`, left to right like the 
 its bottom edge), F1-F5 Note, Instr, FX1, FX2 and Pattern, F6-F9 Fn1-Fn4, arrows, Shift,
 Space for Play, R for Rec, Return for the middle button and Escape for Menu.
 
+## MIDI
+
+The firmware's two MIDI ports, USB and the MIDI jack, become system MIDI ports: "Meadowlark
+USB" and "Meadowlark Jack" in CoreMIDI, client "Meadowlark" with ports "USB" and "Jack" in
+the ALSA sequencer (which PipeWire bridges). Each has an input and an output that other
+programs can connect to. Config > MIDI on the tracker chooses what uses which port, as on
+the Mini; everything there starts off.
+
+`midi.toml`, next to `input.toml` (or `--midi-config <file>`, `MEADOWLARK_MIDI_CONFIG`),
+lists system ports to connect automatically, including devices plugged in later. By
+default every hardware MIDI input plays into the USB port:
+
+```toml
+[usb]
+inputs = ["*"]          # "*": every hardware port; otherwise part of a name, any case
+outputs = []
+
+[jack]
+inputs = []
+outputs = ["MicroFreak"]
+```
+
+`meadowlark --list-midi` prints the system's ports and which ones the config matches;
+`--print-midi-config` prints the defaults with their documentation. Outgoing messages are
+timed to the audio: a note or clock leaves when the sound rendered with it is heard, at its
+place within the audio block, so external synths stay in time with the tracker's own sound.
+`[timing] output_offset_ms` shifts that if a device responds late.
+
 ## SD card
 
 A host directory stands in for the SD card:
@@ -136,6 +167,8 @@ platforms/desktop/build/input_test /tmp/input    # button timing, bindings, inpu
 platforms/desktop/build/eve_image_test           # JPEG/PNG decoding in the FT812 emulator
 platforms/desktop/build/audio_test [pipewire|sdl] # sound output runs in real time without
                                                   # underruns; silent unless --tone
+platforms/desktop/build/midi_test /tmp/midi      # MIDI ports, output timing, midi.toml
+platforms/desktop/build/midi_test /tmp/midi --loopback # also through the system's MIDI
 platforms/desktop/build/audio_test pipewire --capture # also records the output's monitor and
                                                       # checks a quiet tone comes back
 ```

@@ -100,6 +100,7 @@ add_library(meadowlark_platform OBJECT
   source/audio/AudioCapture.cpp
   source/audio/AudioRenderer.cpp
   source/AudioLock.cpp
+  source/ConfigPaths.cpp
   source/CrashHandler.cpp
   source/DesktopButtons.cpp
   source/DesktopDisplayDriver.cpp
@@ -109,6 +110,7 @@ add_library(meadowlark_platform OBJECT
   source/eve/EveRenderer.cpp
   source/hardware.cpp
   source/input/Actions.cpp
+  source/midi/MidiPorts.cpp
   source/platform_math.cpp
   source/PlatformDesktop.cpp
   source/PngWriter.cpp)
@@ -150,9 +152,28 @@ if(MEADOWLARK_SDL)
   target_link_libraries(meadowlark_input PUBLIC meadowlark_core SDL3::SDL3)
   target_compile_options(meadowlark_input PRIVATE -Wall -Wextra)
 
+  # MIDI: midi.toml, output timing, and the system's MIDI (ALSA sequencer / CoreMIDI).
+  add_library(meadowlark_midi STATIC
+    source/midi/MidiConfig.cpp
+    source/midi/MidiConnector.cpp
+    source/midi/MidiScheduler.cpp)
+  target_include_directories(meadowlark_midi PUBLIC source)
+  target_include_directories(meadowlark_midi SYSTEM PRIVATE ${TOMLPP_INCLUDE_DIR})
+  target_compile_definitions(meadowlark_midi PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
+  target_link_libraries(meadowlark_midi PUBLIC meadowlark_core Threads::Threads)
+  target_compile_options(meadowlark_midi PRIVATE -Wall -Wextra)
+  if(APPLE)
+    target_sources(meadowlark_midi PRIVATE source/midi/CoreMidiBackend.cpp)
+    target_link_libraries(meadowlark_midi PUBLIC "-framework CoreMIDI" "-framework CoreFoundation")
+  else()
+    find_package(ALSA REQUIRED)
+    target_sources(meadowlark_midi PRIVATE source/midi/AlsaMidiBackend.cpp)
+    target_link_libraries(meadowlark_midi PUBLIC ALSA::ALSA)
+  endif()
+
   # The application: SDL3 window, input and sound.
   add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp source/audio/SdlAudioInput.cpp)
-  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input)
+  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input meadowlark_midi)
   target_compile_options(meadowlark PRIVATE -Wall -Wextra)
   set_target_properties(meadowlark PROPERTIES ENABLE_EXPORTS ON)
 
@@ -179,6 +200,10 @@ if(MEADOWLARK_SDL)
 
   add_executable(sdl_input_probe ${ROOT_DIR}/tools/sdl_input_probe.c)
   target_link_libraries(sdl_input_probe PRIVATE SDL3::SDL3)
+
+  # MIDI ports, timing and midi.toml; --loopback also runs the system backend.
+  add_executable(midi_test tests/midi_test.cpp)
+  target_link_libraries(midi_test PRIVATE meadowlark_platform meadowlark_midi)
 
   # Button timing, bindings and input.toml; takes a scratch directory.
   add_executable(input_test tests/input_test.cpp)
