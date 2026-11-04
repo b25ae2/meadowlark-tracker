@@ -10,7 +10,8 @@ secondary. The firmware build (`make` at the repository root) is separate and un
   phases will need).
 - macOS: `brew install cmake ninja sdl3 tomlplusplus`.
 
-With `-DMEADOWLARK_SDL=OFF` neither SDL3 nor toml++ is needed.
+With `-DMEADOWLARK_SDL=OFF` neither SDL3 nor toml++ is needed, and on Linux
+`-DMEADOWLARK_PIPEWIRE=OFF` drops the PipeWire dependency (sound then goes through SDL).
 
 ## Build
 
@@ -24,6 +25,7 @@ Options:
 | Option | Default | Effect |
 |---|---|---|
 | `-DMEADOWLARK_SDL=OFF` | `ON` | Skip everything that needs SDL3 |
+| `-DMEADOWLARK_PIPEWIRE=OFF` | `ON` on Linux | No native PipeWire output |
 | `-DMEADOWLARK_SANITIZE=undefined` | empty | Build with the given `-fsanitize=` list |
 | `-DCMAKE_BUILD_TYPE=Debug` | `RelWithDebInfo` | Usual CMake build types |
 
@@ -38,11 +40,19 @@ Apple clang 15 on macOS 26; UBSan works on both.
 ```sh
 platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
                                    [--scale n] [--fullscreen] [--print-input-config]
+                                   [--audio pipewire|sdl|none] [--audio-buffer frames]
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
-letterboxed, sharp at whole-number scales and filtered otherwise. There is no sound output
-yet: the audio engine runs, silently.
+letterboxed, sharp at whole-number scales and filtered otherwise.
+
+Sound goes to PipeWire on Linux and through SDL (Core Audio) on macOS, at the engine's
+44.1 kHz; the sound server resamples if it runs at another rate. `--audio sdl` uses SDL on
+Linux too, `--audio none` runs silently. The engine renders on its own thread into a buffer
+of `--audio-buffer` frames (default 512, about 12 ms); if the device asks for more per
+callback, the buffer grows to that plus one block. The exit message reports underruns. The
+firmware's master volume applies as on the Mini's headphone output, with 81 % (the default)
+at 0 dB; the hardware's analog boost above that is not reproduced, use the system volume.
 
 Closing the window holds the Mini's power button, so the firmware saves the project to the
 workspace and powers off (about 1.5 s); closing it again quits at once.
@@ -103,6 +113,9 @@ hidden. `MEADOWLARK_FS_TRACE=1` logs file opens, existence checks and directory 
 ```sh
 platforms/desktop/build/fs_test /tmp/fs_test     # file system semantics; recreates the directory
 platforms/desktop/build/input_test /tmp/input    # button timing, bindings, input.toml
+platforms/desktop/build/eve_image_test           # JPEG/PNG decoding in the FT812 emulator
+platforms/desktop/build/audio_test [pipewire|sdl] # sound output runs in real time without
+                                                  # underruns; silent unless --tone
 ```
 
 ## Checks against the firmware

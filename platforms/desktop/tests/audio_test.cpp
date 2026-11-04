@@ -88,10 +88,12 @@ int main(int argc, char** argv)
     SDL_Quit();
 
     const double rate = blocks * AudioRenderer::kBlockFrames / elapsed;
-    std::printf("audio_test: %s, buffer %d frames (%llu blocks prefilled)\n",
+    std::printf("audio_test: %s, buffer %d frames (asked for %d, %llu blocks prefilled)\n",
                 output->name(),
                 renderer.bufferFrames(),
+                buffer,
                 static_cast<unsigned long long>(prefilled));
+    std::printf("  largest device request: %zu frames\n", renderer.largestRead());
     std::printf("  consumed %.0f frames/s over %.1f s (expected %d)\n", rate, elapsed, AudioRenderer::kSampleRate);
     std::printf("  underruns after start-up: %llu\n", static_cast<unsigned long long>(underruns));
 

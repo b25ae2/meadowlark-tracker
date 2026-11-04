@@ -11,14 +11,12 @@ set -euo pipefail
 
 # Compiler and build tools for the desktop build.
 BASE_PKGS=(build-essential clang git cmake ninja-build pkg-config libsdl3-dev
-           libtomlplusplus-dev)
+           libtomlplusplus-dev libpipewire-0.3-dev)
 
 # Phase 2-9: display, audio, input, MIDI, fonts, config, plugin hosting.
 PLANNED_PKGS=(
-  libpipewire-0.3-dev   # audio backend
   librtmidi-dev         # MIDI
   libfreetype-dev       # configurable TTF fonts
-  libstb-dev            # stb_image
   liblilv-dev           # LV2 hosting
 )
 

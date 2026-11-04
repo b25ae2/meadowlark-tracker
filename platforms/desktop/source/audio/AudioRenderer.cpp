@@ -11,18 +11,16 @@ void AudioRenderer::start(RenderBlock render, int bufferFrames)
 
     // Whole blocks, at least two.
     const size_t blocks = std::max<size_t>(2, (static_cast<size_t>(std::max(bufferFrames, 0)) + kBlockFrames - 1) / kBlockFrames);
-    target = blocks * kBlockFrames;
-    size_t capacity = 1;
-    while (capacity < target)
-        capacity <<= 1;
-    ring.assign(capacity * 2, 0);
-    mask = capacity - 1;
+    target = std::min(blocks * kBlockFrames, kCapacityFrames);
+    ring.assign(kCapacityFrames * 2, 0);
+    mask = kCapacityFrames - 1;
+    largestReadFrames = 0;
     writePos = 0;
     readPos = 0;
     underrunCount = 0;
     blockCount = 0;
 
-    while (filled() + kBlockFrames <= target)
+    while (filled() + kBlockFrames <= target.load())
         renderOneBlock();
 
     running = true;
@@ -65,7 +63,7 @@ void AudioRenderer::run()
 {
     while (running)
     {
-        if (filled() + kBlockFrames <= target)
+        if (filled() + kBlockFrames <= target.load(std::memory_order_relaxed))
         {
             renderOneBlock();
             continue;
@@ -76,7 +74,7 @@ void AudioRenderer::run()
         std::unique_lock<std::mutex> lock(wakeMutex);
         waiting = true;
         wake.wait_for(lock, std::chrono::milliseconds(2), [this] {
-            return !running || filled() + kBlockFrames <= target;
+            return !running || filled() + kBlockFrames <= target.load(std::memory_order_relaxed);
         });
         waiting = false;
     }
@@ -84,6 +82,15 @@ void AudioRenderer::run()
 
 void AudioRenderer::read(int16_t* interleaved, size_t frames)
 {
+    if (frames > largestReadFrames.load(std::memory_order_relaxed))
+    {
+        largestReadFrames.store(frames, std::memory_order_relaxed);
+        // Room for the whole request plus the block being rendered, in whole blocks.
+        const size_t needed = ((frames + kBlockFrames - 1) / kBlockFrames + 1) * kBlockFrames;
+        if (needed > target.load(std::memory_order_relaxed))
+            target.store(std::min(needed, kCapacityFrames), std::memory_order_relaxed);
+    }
+
     const size_t start = readPos.load(std::memory_order_relaxed);
     const size_t available = writePos.load(std::memory_order_acquire) - start;
     const size_t count = std::min(available, frames);

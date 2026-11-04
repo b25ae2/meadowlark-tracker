@@ -8,7 +8,9 @@
 // which never blocks or takes a lock, so the main loop holding AudioLock for a while costs
 // buffer headroom rather than stalling the sound server.
 //
-// Latency is bufferFrames plus whatever the backend adds.
+// Latency is bufferFrames plus whatever the backend adds. If the backend asks for more
+// frames per callback than that (PipeWire follows the graph's quantum), the buffer grows to
+// the largest request plus a block, since anything smaller underruns on every callback.
 
 #include <atomic>
 #include <condition_variable>
@@ -24,6 +26,8 @@ class AudioRenderer
   public:
     static constexpr int kBlockFrames = 128;
     static constexpr int kSampleRate = 44100;
+    // Ring size; also the most the buffer can grow to (about 186 ms).
+    static constexpr size_t kCapacityFrames = 8192;
 
     using RenderBlock = std::function<void(int16_t* left, int16_t* right, int frames)>;
 
@@ -33,7 +37,9 @@ class AudioRenderer
     void start(RenderBlock render, int bufferFrames);
     void stop();
     bool isRunning() const { return thread.joinable(); }
-    int bufferFrames() const { return static_cast<int>(target); }
+    int bufferFrames() const { return static_cast<int>(target.load(std::memory_order_relaxed)); }
+    // Largest single read() so far.
+    size_t largestRead() const { return largestReadFrames.load(std::memory_order_relaxed); }
 
     // Consumer side, any thread, real-time safe: copies interleaved stereo frames and fills
     // whatever isn't ready with silence (an underrun).
@@ -50,7 +56,7 @@ class AudioRenderer
     RenderBlock renderBlock;
     std::vector<int16_t> ring; // interleaved stereo
     size_t mask = 0;          // ring size in frames - 1
-    size_t target = 0;
+    std::atomic<size_t> target{ 0 };
     std::atomic<size_t> writePos{ 0 }; // frames, only grows
     std::atomic<size_t> readPos{ 0 };
 
@@ -62,6 +68,7 @@ class AudioRenderer
 
     std::atomic<uint64_t> underrunCount{ 0 };
     std::atomic<uint64_t> blockCount{ 0 };
+    std::atomic<size_t> largestReadFrames{ 0 };
     int16_t left[kBlockFrames] = {};
     int16_t right[kBlockFrames] = {};
 };

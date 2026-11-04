@@ -256,9 +256,11 @@ void App::stopAudio()
     if (audioRenderer.isRunning())
     {
         audioRenderer.stop();
-        std::printf("meadowlark: audio %llu blocks, %llu underruns\n",
+        std::printf("meadowlark: audio %llu blocks, %llu underruns, buffer %d frames (device asked for up to %zu)\n",
                     static_cast<unsigned long long>(audioRenderer.blocksRendered()),
-                    static_cast<unsigned long long>(audioRenderer.underruns()));
+                    static_cast<unsigned long long>(audioRenderer.underruns()),
+                    audioRenderer.bufferFrames(),
+                    audioRenderer.largestRead());
     }
 }
 
