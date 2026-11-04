@@ -5,7 +5,8 @@
 // The display is a software FT812 (DesktopDisplayDriver), the SD card a host directory
 // (DesktopFileSystem) and the buttons are fed by the front end's input layer
 // (DesktopButtons). Everything else except the clock is still a safe stub; later phases
-// replace them: audio (phase 3), MIDI (phase 6).
+// replace them: MIDI (phase 6). Audio output is the front end's (audio/AudioRenderer.h);
+// DesktopCodec only turns the firmware's volume and mute into a gain.
 
 #include "ConfigManager.h"
 #include "DesktopButtons.h"
@@ -13,6 +14,7 @@
 #include "DesktopFileSystem.h"
 #include "Platform.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 
@@ -43,7 +45,11 @@ class StubSwitchGroup : public SwitchGroup
     void (*callbacks[3])(uint8_t) = {};
 };
 
-class StubSgtl5000 : public Sgtl5000
+// The SGTL5000's output stage as a gain on the rendered audio. Volume follows the codec's
+// headphone curve (0.5 dB steps, 100 % = +12 dB down to -51.5 dB); the firmware's default
+// of 81 % is its 0 dB point. Above that the hardware boosts the analog output, which would
+// clip here, so the gain stops at 0 dB. Everything else (DAP, EQ, inputs) is not modelled.
+class DesktopCodec : public Sgtl5000
 {
   public:
     void init() override {}
@@ -51,8 +57,8 @@ class StubSgtl5000 : public Sgtl5000
     void setHeadphoneSource(HeadphoneSource) override {}
     void setLineInLevel(int) override {}
     void setMicGain(int) override {}
-    void setHeadphoneMuted(bool) override {}
-    void setMasterVolume(float) override {}
+    void setHeadphoneMuted(bool muted) override { headphoneMuted = muted; }
+    void setMasterVolume(float volume) override;
     void setAutoVolumeEnabled(bool) override {}
     void configureAutoVolume(AutoVolumeParams*) override {}
     void setEnhanceBassEnabled(bool) override {}
@@ -62,6 +68,13 @@ class StubSgtl5000 : public Sgtl5000
     void enableSurroundSound(bool) override {}
     void configureSurroundSound(SurroundSoundParams*) override {}
     void enableHardwareProcessor(bool) override {}
+
+    // Linear gain for the output, 0 when muted. Safe to read from the audio thread.
+    float outputGain() const { return headphoneMuted ? 0.0f : volumeGain.load(std::memory_order_relaxed); }
+
+  private:
+    std::atomic<bool> headphoneMuted{ false };
+    std::atomic<float> volumeGain{ 1.0f };
 };
 
 class StubRadio : public Radio
@@ -218,6 +231,7 @@ class PlatformDesktop : public Platform
     Usb* getUsb() override { return &usb; }
 
     DesktopButtons& desktopButtons() { return buttons; }
+    DesktopCodec& desktopCodec() { return codec; }
     DesktopDisplayDriver& desktopDisplay() { return display; }
     DesktopFileSystem& desktopFileSystem() { return fileSystem; }
     bool powerOffRequested() const { return powerOff; }
@@ -227,7 +241,7 @@ class PlatformDesktop : public Platform
 
   private:
     DesktopTimer timer;
-    StubSgtl5000 codec;
+    DesktopCodec codec;
     StubRadio radio;
     DesktopButtons buttons;
     StubSwitchGroup pads;

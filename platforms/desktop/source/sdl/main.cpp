@@ -1,10 +1,10 @@
 // Meadowlark with an SDL3 window: the software FT812's frames scaled into the window, and
 // keyboard, gamepad, joystick and mouse input mapped to the Tracker Mini's buttons through
-// input.toml. Audio is rendered inline like the headless runner until the PipeWire output
-// lands, so playback runs but is silent.
+// input.toml. Sound goes to PipeWire on Linux and through SDL elsewhere.
 //
 //   meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
 //              [--scale n] [--fullscreen] [--print-input-config]
+//              [--audio pipewire|sdl|none] [--audio-buffer frames]
 //
 // Closing the window holds the power button, so core saves the project to the workspace and
 // powers off, as on the Mini. A second close quits at once.
@@ -13,10 +13,16 @@
 #include "PlatformDesktop.h"
 #include "PngWriter.h"
 #include "Tracker.h"
+#include "audio/AudioRenderer.h"
+#include "audio/SdlAudioOutput.h"
 #include "input/Actions.h"
 #include "input/InputConfig.h"
 #include "input/InputResolver.h"
 #include "input/SdlInput.h"
+
+#ifdef MEADOWLARK_HAVE_PIPEWIRE
+#include "audio/PipeWireOutput.h"
+#endif
 
 #include <SDL3/SDL.h>
 
@@ -24,8 +30,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 #include <ctime>
+#include <memory>
 #include <string>
+#include <vector>
+
+// hardware.cpp: the firmware's own output mute (startup, power-off).
+uint8_t isAudioOutMuted();
 
 namespace
 {
@@ -36,6 +48,12 @@ constexpr uint64_t kQuitTimeoutMs = 6000;
 
 PlatformDesktop platform;
 
+#ifdef MEADOWLARK_HAVE_PIPEWIRE
+constexpr const char* kDefaultAudio = "pipewire";
+#else
+constexpr const char* kDefaultAudio = "sdl";
+#endif
+
 struct Options
 {
     std::string sdRoot = DesktopFileSystem::defaultRoot();
@@ -43,12 +61,15 @@ struct Options
     bool traceInput = false;
     bool fullscreen = false;
     int scale = 1;
+    std::string audio = kDefaultAudio;
+    int audioBuffer = 512; // frames, about 12 ms
 };
 
 void printUsage()
 {
     std::printf("usage: meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]\n"
-                "                  [--scale n] [--fullscreen] [--print-input-config]\n");
+                "                  [--scale n] [--fullscreen] [--print-input-config]\n"
+                "                  [--audio pipewire|sdl|none] [--audio-buffer frames]\n");
 }
 
 class App
@@ -68,12 +89,18 @@ class App
     void saveScreenshot();
     void updateScaleMode();
     void present();
-    void renderAudio();
+    void startAudio();
+    void stopAudio();
+    void renderAudioBlock(int16_t* left, int16_t* right, int frames);
+    void renderAudioInline();
 
     Options options;
     input::InputResolver resolver;
     input::SdlInput sdlInput;
     Tracker* tracker = nullptr;
+
+    AudioRenderer audioRenderer;
+    std::unique_ptr<AudioOutput> audioOutput;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -92,6 +119,7 @@ class App
 
 App::~App()
 {
+    stopAudio();
     if (texture)
         SDL_DestroyTexture(texture);
     if (renderer)
@@ -169,7 +197,87 @@ bool App::init()
     tracker->getStartDisplayFunc()(&platform);
     tracker->init(&platform);
     nextAudioBlock = std::chrono::steady_clock::now();
+    startAudio();
     return true;
+}
+
+// Tries the chosen backend, then SDL. Without one, blocks render on the main loop and are
+// dropped, so the engine still runs in time.
+void App::startAudio()
+{
+    if (options.audio == "none")
+    {
+        std::printf("meadowlark: audio off\n");
+        return;
+    }
+
+    audioRenderer.start([this](int16_t* left, int16_t* right, int frames) { renderAudioBlock(left, right, frames); },
+                        options.audioBuffer);
+
+    std::vector<std::string> backends = { options.audio };
+    if (options.audio != "sdl")
+        backends.push_back("sdl");
+    for (const std::string& backend : backends)
+    {
+        std::unique_ptr<AudioOutput> output;
+#ifdef MEADOWLARK_HAVE_PIPEWIRE
+        if (backend == "pipewire")
+            output = std::make_unique<PipeWireOutput>();
+#endif
+        if (backend == "sdl")
+            output = std::make_unique<SdlAudioOutput>();
+        if (!output)
+        {
+            std::fprintf(stderr, "meadowlark: audio backend \"%s\" is not available in this build\n", backend.c_str());
+            continue;
+        }
+        if (output->start(audioRenderer))
+        {
+            audioOutput = std::move(output);
+            std::printf("meadowlark: audio %s, %d frames buffered (%.1f ms)\n",
+                        audioOutput->name(),
+                        audioRenderer.bufferFrames(),
+                        audioRenderer.bufferFrames() * 1000.0 / AudioRenderer::kSampleRate);
+            return;
+        }
+    }
+
+    std::fprintf(stderr, "meadowlark: no audio output, running silently\n");
+    audioRenderer.stop();
+}
+
+void App::stopAudio()
+{
+    if (audioOutput)
+    {
+        audioOutput->stop();
+        audioOutput.reset();
+    }
+    if (audioRenderer.isRunning())
+    {
+        audioRenderer.stop();
+        std::printf("meadowlark: audio %llu blocks, %llu underruns\n",
+                    static_cast<unsigned long long>(audioRenderer.blocksRendered()),
+                    static_cast<unsigned long long>(audioRenderer.underruns()));
+    }
+}
+
+// The audio interrupt's work: core renders a block with the main loop locked out, then the
+// codec's volume and the firmware's output mute apply.
+void App::renderAudioBlock(int16_t* left, int16_t* right, int frames)
+{
+    AudioLock::acquire();
+    tracker->updateAudioBuffers(left, right, frames);
+    AudioLock::release();
+
+    const float gain = isAudioOutMuted() ? 0.0f : platform.desktopCodec().outputGain();
+    if (gain == 1.0f)
+        return;
+    for (int i = 0; i < frames; i++)
+    {
+        left[i] = static_cast<int16_t>(std::lrintf(left[i] * gain));
+        right[i] = static_cast<int16_t>(std::lrintf(right[i] * gain));
+    }
 }
 
 void App::run()
@@ -180,7 +288,8 @@ void App::run()
         while (SDL_PollEvent(&event))
             handleEvent(event);
 
-        renderAudio();
+        if (!audioRenderer.isRunning())
+            renderAudioInline();
         platform.desktopButtons().update();
         tracker->update();
 
@@ -324,9 +433,9 @@ void App::present()
     SDL_RenderPresent(renderer);
 }
 
-// Stand-in for the audio interrupt: blocks render on the main loop at the audio rate. After
-// a stall (window drag, debugger) it skips ahead instead of rendering the backlog.
-void App::renderAudio()
+// Without an output, blocks render on the main loop at the audio rate. After a stall
+// (window drag, debugger) it skips ahead instead of rendering the backlog.
+void App::renderAudioInline()
 {
     using clock = std::chrono::steady_clock;
     const auto blockPeriod = std::chrono::duration_cast<clock::duration>(
@@ -337,9 +446,7 @@ void App::renderAudio()
 
     while (now >= nextAudioBlock)
     {
-        AudioLock::acquire();
-        tracker->updateAudioBuffers(left, right, kAudioBlockSamples);
-        AudioLock::release();
+        renderAudioBlock(left, right, kAudioBlockSamples);
         nextAudioBlock += blockPeriod;
     }
 }
@@ -366,6 +473,10 @@ int main(int argc, char** argv)
             options.fullscreen = true;
         else if (std::strcmp(arg, "--scale") == 0 && i + 1 < argc)
             options.scale = std::atoi(argv[++i]);
+        else if (std::strcmp(arg, "--audio") == 0 && i + 1 < argc)
+            options.audio = argv[++i];
+        else if (std::strcmp(arg, "--audio-buffer") == 0 && i + 1 < argc)
+            options.audioBuffer = std::atoi(argv[++i]);
         else if (std::strcmp(arg, "--print-input-config") == 0)
         {
             std::fputs(input::defaultInputConfig(), stdout);

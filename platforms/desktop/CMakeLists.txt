@@ -14,7 +14,12 @@ set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 cmake_path(NORMAL_PATH ROOT_DIR)
 set(CORE_DIR ${ROOT_DIR}/core)
 
-option(MEADOWLARK_SDL "Build the SDL3 front end (window, input)" ON)
+option(MEADOWLARK_SDL "Build the SDL3 front end (window, input, sound)" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  option(MEADOWLARK_PIPEWIRE "Native PipeWire sound output (otherwise SDL's)" ON)
+else()
+  set(MEADOWLARK_PIPEWIRE OFF)
+endif()
 set(MEADOWLARK_SANITIZE "" CACHE STRING "Comma-separated -fsanitize= list, empty for none")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -92,6 +97,7 @@ target_compile_options(meadowlark_core
 # OBJECT library: core/ calls back into these (interrupt lock, sin_q15, mute), so their
 # objects must always be linked, whatever the linker's archive ordering rules are.
 add_library(meadowlark_platform OBJECT
+  source/audio/AudioRenderer.cpp
   source/AudioLock.cpp
   source/DesktopButtons.cpp
   source/DesktopDisplayDriver.cpp
@@ -140,10 +146,31 @@ if(MEADOWLARK_SDL)
   target_link_libraries(meadowlark_input PUBLIC meadowlark_core SDL3::SDL3)
   target_compile_options(meadowlark_input PRIVATE -Wall -Wextra)
 
-  # The application: SDL3 window and input.
-  add_executable(meadowlark source/sdl/main.cpp)
+  # The application: SDL3 window, input and sound.
+  add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp)
   target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input)
   target_compile_options(meadowlark PRIVATE -Wall -Wextra)
+
+  if(MEADOWLARK_PIPEWIRE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+    # PipeWire's SPA headers are C99-style; keep their warnings out of ours.
+    add_library(meadowlark_pipewire STATIC source/audio/PipeWireOutput.cpp)
+    target_include_directories(meadowlark_pipewire PUBLIC source)
+    target_link_libraries(meadowlark_pipewire PUBLIC PkgConfig::PIPEWIRE)
+    target_compile_options(meadowlark_pipewire PRIVATE -Wall -Wextra -Wno-missing-field-initializers
+      $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-c99-designator -Wno-gnu-statement-expression>)
+    target_link_libraries(meadowlark PRIVATE meadowlark_pipewire)
+    target_compile_definitions(meadowlark PRIVATE MEADOWLARK_HAVE_PIPEWIRE)
+  endif()
+
+  # Sound output: renderer and backend running in real time; plays silence unless --tone.
+  add_executable(audio_test tests/audio_test.cpp source/audio/SdlAudioOutput.cpp)
+  target_link_libraries(audio_test PRIVATE meadowlark_platform SDL3::SDL3)
+  if(MEADOWLARK_PIPEWIRE)
+    target_link_libraries(audio_test PRIVATE meadowlark_pipewire)
+    target_compile_definitions(audio_test PRIVATE MEADOWLARK_HAVE_PIPEWIRE)
+  endif()
 
   add_executable(sdl_input_probe ${ROOT_DIR}/tools/sdl_input_probe.c)
   target_link_libraries(sdl_input_probe PRIVATE SDL3::SDL3)

@@ -1,5 +1,6 @@
 #include "PlatformDesktop.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -38,6 +39,26 @@ uint32_t DesktopTimer::clockCycles()
     return static_cast<uint32_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start)
         .count());
+}
+
+//------------------------------------------------------------------------------
+// DesktopCodec
+
+void DesktopCodec::setMasterVolume(float volume)
+{
+    // Sgtl5000Impl: 0 mutes; 0.01 .. 1.0 maps linearly onto CHIP_ANA_HP_CTRL 0x7F .. 0x00,
+    // where each step is 0.5 dB and 0x00 is +12 dB.
+    if (volume <= 0.0f)
+    {
+        volumeGain = 0.0f;
+        return;
+    }
+    const float clamped = volume < 0.01f ? 0.01f : (volume > 1.0f ? 1.0f : volume);
+    const auto level = static_cast<uint8_t>(127.0f + (clamped - 0.01f) * (0.0f - 127.0f) / (1.0f - 0.01f));
+    float decibels = 12.0f - 0.5f * level;
+    if (decibels > 0.0f)
+        decibels = 0.0f;
+    volumeGain = std::pow(10.0f, decibels / 20.0f);
 }
 
 //------------------------------------------------------------------------------
