@@ -93,10 +93,10 @@ rec  = []   # unbound
 `platforms/desktop/build/sdl_input_probe` shows how SDL numbers a device's buttons, axes and
 hats. Buttons repeat while held with the hardware's timing.
 
-The built-in bindings are generic keyboard ones; a uConsole layout comes later. F1-F8 are
+The built-in bindings are generic keyboard ones; a uConsole layout comes later. 1-8 are
 the eight buttons under the screen (`screen1`-`screen8`, left to right like the labels along
-its bottom edge), 1-5 Note, Instr, FX1, FX2 and Pattern, 6-9 Fn1-Fn4, arrows, Shift, Space
-for Play, R for Rec, Return for the middle button and Escape for Menu.
+its bottom edge), F1-F5 Note, Instr, FX1, FX2 and Pattern, F6-F9 Fn1-Fn4, arrows, Shift,
+Space for Play, R for Rec, Return for the middle button and Escape for Menu.
 
 ## SD card
 

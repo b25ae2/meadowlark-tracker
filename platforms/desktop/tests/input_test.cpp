@@ -273,8 +273,9 @@ void testConfig(const std::string& dir)
     input::InputConfig config;
     CHECK(input::loadInputConfig("", config));
     CHECK(hasBinding(config, "play", { "key:Space" }));
-    CHECK(hasBinding(config, "screen1", { "key:F1" }) && hasBinding(config, "screen8", { "key:F8" }));
-    CHECK(hasBinding(config, "fn1", { "key:6" }));
+    CHECK(hasBinding(config, "screen1", { "key:1" }) && hasBinding(config, "screen8", { "key:8" }));
+    CHECK(hasBinding(config, "note", { "key:F1" }) && hasBinding(config, "fx2", { "key:F4" }));
+    CHECK(hasBinding(config, "fn1", { "key:F6" }));
     CHECK(hasBinding(config, "shift", { "key:Right Shift" }));
     CHECK(hasBinding(config, "quit", { "key:Left Ctrl", "key:Q" }));
     CHECK(bindingCount(config, "power") == 0);
@@ -312,8 +313,9 @@ void testConfig(const std::string& dir)
     std::fflush(stdout);
     CHECK(!input::loadInputConfig(path, config));
     CHECK(hasBinding(config, "play", { "key:Space" }));
-    CHECK(hasBinding(config, "screen1", { "key:F1" }) && hasBinding(config, "screen8", { "key:F8" }));
-    CHECK(hasBinding(config, "fn1", { "key:6" }));
+    CHECK(hasBinding(config, "screen1", { "key:1" }) && hasBinding(config, "screen8", { "key:8" }));
+    CHECK(hasBinding(config, "note", { "key:F1" }) && hasBinding(config, "fx2", { "key:F4" }));
+    CHECK(hasBinding(config, "fn1", { "key:F6" }));
 }
 } // namespace
 
