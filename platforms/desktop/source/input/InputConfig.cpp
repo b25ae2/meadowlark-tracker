@@ -54,11 +54,11 @@ motion_step = 40       # pixels of pointer motion per mouse:move* tap
 capture_mouse = false  # keep the pointer in the window (relative mode), for mouse:move*
 # SDL gamepad mappings (SDL_GameControllerDB format) that make a raw joystick a gamepad, so
 # pad:* names work for it. The uConsole's gamepad buttons and d-pad come as a joystick
-# SDL has no mapping for; its six buttons are taken as X A B Y Select Start. The GUID
+# SDL has no mapping for; its six buttons are A B Y X Select Start. The GUID
 # includes the name's checksum, so the keyboard's "System Control" device, which shares
 # its IDs, stays a raw joystick.
 gamepad_mappings = [
-  "0300de1fedfe00000000000011010000,Clockwork uConsole Keyboard,x:b0,a:b1,b:b2,y:b3,back:b4,start:b5,leftx:a0,lefty:a1,platform:Linux,",
+  "0300de1fedfe00000000000011010000,Clockwork uConsole Keyboard,a:b0,b:b1,y:b2,x:b3,back:b4,start:b5,leftx:a0,lefty:a1,platform:Linux,",
 ]
 
 # The Tracker Mini's buttons on a keyboard and gamepad (laid out for the uConsole).
