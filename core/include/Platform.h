@@ -21,6 +21,7 @@ class UsbAudio;
 class FileSystem;
 class CrcCalculator;
 class Usb;
+class ExternalInstruments;
 
 class Platform
 {
@@ -56,6 +57,8 @@ class Platform
     virtual CrcCalculator* getCrcCalculator() = 0;
     virtual SystemInfo* getSystemInfo() = 0;
     virtual Usb* getUsb() = 0;
+    // Instruments outside core (the desktop's plugin host); nullptr on the hardware.
+    virtual ExternalInstruments* getExternalInstruments() { return nullptr; }
 };
 
 class CrcCalculator
@@ -108,6 +111,47 @@ class Midi
     virtual void sendNoteOn(uint8_t note, uint8_t velocity, uint8_t channel) = 0;
     virtual void sendNoteOff(uint8_t note, uint8_t velocity, uint8_t channel) = 0;
 };
+
+// Instruments that live outside core, such as the desktop's plugin host. They get what core
+// sends to MIDI instruments, whatever Config's MIDI out is set to and also while an export
+// renders, and their audio joins the tracks: dry into the master mix, the sends into the
+// delay and reverb.
+class ExternalInstruments
+{
+  public:
+    enum Bus
+    {
+        kDryLeft,
+        kDryRight,
+        kDelayLeft,
+        kDelayRight,
+        kReverbLeft,
+        kReverbRight,
+        kBusCount
+    };
+
+    virtual Midi* getMidi() = 0;
+    // Once per audio block, from the engine's update: fills each bus with frames samples.
+    virtual void render(int16_t* buses[kBusCount], int frames) = 0;
+
+    // Their state goes with the project, like the synth's patches: saved into the workspace
+    // after the project is, loaded after a project is loaded from it, and copied along when
+    // the workspace is saved as a project or a project opened into it. Card paths, called on
+    // the main loop.
+    virtual void saveToWorkspace(const char* workspacePath) { (void)workspacePath; }
+    // State changed outside the project (a plugin's editor): the workspace is saved even if
+    // the project itself is unchanged.
+    virtual bool isStateDirty() { return false; }
+    virtual void loadFromWorkspace(const char* workspacePath) { (void)workspacePath; }
+    virtual void copyProjectFiles(const char* sourcePath, const char* destinationPath)
+    {
+        (void)sourcePath;
+        (void)destinationPath;
+    }
+};
+
+// The platform's ExternalInstruments, or nullptr.
+ExternalInstruments* externalInstruments();
 
 class UsbAudio
 {

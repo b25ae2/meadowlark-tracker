@@ -7,6 +7,7 @@
 #include "AudioOutput.h"
 #include "AudioVoice.h"
 #include "ExportQueues.h"
+#include "ExternalInstrumentsStream.h"
 #include "MixerAndFxs.h"
 #include "Platform.h"
 #include "SdStream.h"
@@ -48,6 +49,10 @@ class audioEngine
     void updateInputAudioBuffers(void* i2sData, void* usbData, int length);
     void connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* mixerAndFxs, int idx);
     void connectInputToMixer(AudioInput* input, MixerAndFxs<kVoices>* mixerAndFxs);
+#ifdef PLATFORM_DESKTOP
+    void connectExternalInstrumentsToMixer(ExternalInstrumentsStream* instruments,
+                                           MixerAndFxs<kVoices>* mixerAndFxs);
+#endif
     void connectVoiceToOutput(AudioVoice* voice, AudioOutput* output, int idx);
     void connectInputToOutput(AudioInput* input, AudioOutput* output);
     void connectMixerToOutput(MixerAndFxs<kVoices>* mixerAndFxs, AudioOutput* output);
@@ -232,6 +237,10 @@ class audioEngine
     SdStream sdStream;
     std::vector<AudioConnection*> connections;
     AudioInput input;
+#ifdef PLATFORM_DESKTOP
+    // Before the mixers, so they take its block in the same update.
+    ExternalInstrumentsStream externalInstrumentsStream;
+#endif
     AudioPlaySdWav playerWavFromSD;
     AudioSynthWaveform testWaveform;
     AudioPlayMemory metronomeTick;

@@ -513,6 +513,30 @@ void handleJackSongPosition(unsigned int beats)
     }
 }
 
+// The platform's external instruments (the desktop's plugin host) hear every MIDI
+// instrument: whatever Config's MIDI out says, and also while an export renders.
+static Midi* externalInstrumentsMidi()
+{
+    static Midi* midi = nullptr;
+    static bool looked = false;
+    if (!looked)
+    {
+        if (TrackerImpl::getInstance()->getPlatform() == nullptr)
+            return nullptr;
+        ExternalInstruments* instruments = externalInstruments();
+        midi = instruments != nullptr ? instruments->getMidi() : nullptr;
+        looked = true;
+    }
+    return midi;
+}
+
+// What the MIDI outputs send for a note, with Config's middle C.
+static uint8_t transposedNote(uint8_t note)
+{
+    int8_t transp = 12 * (2 - mtConfig.midi.middleC);
+    return clamp(note + transp, 0, 127);
+}
+
 AUDIO_CORE_RAM void sendCC(uint8_t index, uint8_t value, uint8_t channel, bool toSynth)
 {
     if (toSynth)
@@ -523,6 +547,9 @@ AUDIO_CORE_RAM void sendCC(uint8_t index, uint8_t value, uint8_t channel, bool t
 #endif
         return;
     }
+
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendControlChange(index, value, channel);
 
     if (sequencer.isRenderMode())
         return;
@@ -554,6 +581,9 @@ void sendProgramChange(uint8_t value, uint8_t channel, bool toSynth)
         return;
     }
 
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendProgramChange(value, channel);
+
     if (sequencer.isRenderMode())
         return;
 
@@ -582,6 +612,9 @@ void sendAfterTouch(uint8_t value, uint8_t channel, bool toSynth)
 #endif
         return;
     }
+
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendAfterTouch(value, channel);
 
     if (sequencer.isRenderMode())
         return;
@@ -612,6 +645,9 @@ void sendPolyPressure(uint8_t note, uint8_t value, uint8_t channel, bool toSynth
 #endif
         return;
     }
+
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendPolyPressure(transposedNote(note), value, channel);
 
     if (sequencer.isRenderMode())
         return;
@@ -645,6 +681,9 @@ void sendPitchbend(int16_t value, int8_t channel, bool toSynth)
         return;
     }
 
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendPitchBend(value, channel);
+
     if (sequencer.isRenderMode())
         return;
 
@@ -676,6 +715,9 @@ void sendMidiNoteOn(uint8_t note, uint8_t velo, uint8_t channel, bool toSynth)
         return;
     }
 
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendNoteOn(transposedNote(note), velo, channel);
+
     if (sequencer.isRenderMode())
         return;
 
@@ -706,6 +748,9 @@ void sendMidiNoteOff(uint8_t note, [[maybe_unused]] uint8_t velo, uint8_t channe
 #endif
         return;
     }
+
+    if (Midi* external = externalInstrumentsMidi())
+        external->sendNoteOff(transposedNote(note), 0, channel);
 
     if (sequencer.isRenderMode())
         return;

@@ -81,6 +81,12 @@ Platform* TrackerImpl::getPlatform()
     return platform;
 }
 
+ExternalInstruments* externalInstruments()
+{
+    Platform* platform = TrackerImpl::getInstance()->getPlatform();
+    return platform != nullptr ? platform->getExternalInstruments() : nullptr;
+}
+
 #ifdef FEATURE_SYNTH
 Synth& TrackerImpl::getSynth()
 {

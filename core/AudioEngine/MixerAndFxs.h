@@ -29,15 +29,21 @@ class MixerAndFxs
     };
 
     static constexpr int kExternalInputsCount = 1;
+#ifdef PLATFORM_DESKTOP
+    // The external instruments' stereo bus (ExternalInstruments): after the other inputs.
+    static constexpr int kExternalInstrumentsInputs = 1;
+#else
+    static constexpr int kExternalInstrumentsInputs = 0;
+#endif
 #ifndef PLATFORM_IMX
     static constexpr int kSendsInputsCount = 2 * kExternalInputsCount + voicesCount;
 #else
     static constexpr int kSendsInputsCount =
-      2 * kExternalInputsCount + 2 * voicesCount + kSynthParts;
+      2 * kExternalInputsCount + 2 * voicesCount + kSynthParts + 2 * kExternalInstrumentsInputs;
 #endif
     static constexpr int kTrackMixerOutputsCount = 1;
     static constexpr int kTrackAndSendsMixerInputs =
-      kTrackMixerOutputsCount + kExternalInputsCount + FxType::kFxCount;
+      kTrackMixerOutputsCount + kExternalInputsCount + FxType::kFxCount + kExternalInstrumentsInputs;
     static constexpr int kTracksAndSynthVoices = voicesCount + kSynthParts;
 
     MixerAndFxs();

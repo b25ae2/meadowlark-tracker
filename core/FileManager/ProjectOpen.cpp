@@ -9,6 +9,7 @@
 #endif
 
 #include "log.h"
+#include "TrackerImpl.h"
 
 #include <cstring>
 
@@ -357,6 +358,15 @@ void ProjectOpen::openProjectFinish()
 
     newFileManager.getSynth()->copyWorkspacePatches(srcFilePath, cWorkspacePath);
 #endif
+    if (ExternalInstruments* instruments = externalInstruments())
+    {
+        snprintf(srcFilePath,
+                 pathSize,
+                 cProjectsPathFormat,
+                 newFileManager.getCurrentProjectPath(),
+                 newFileManager.getCurrentProjectName());
+        instruments->copyProjectFiles(srcFilePath, cWorkspacePath);
+    }
 
     //-----------------------------------
 

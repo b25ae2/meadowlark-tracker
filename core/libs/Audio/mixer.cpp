@@ -77,4 +77,9 @@ template class AudioMixer<10>;
 template class AudioMixer<18>;
 template class AudioMixer<11>;
 template class AudioMixer<21>;
+#ifdef PLATFORM_DESKTOP
+// MixerAndFxs with the external instruments' inputs.
+template class AudioMixer<5>;
+template class AudioMixer<20>;
+#endif
 #endif

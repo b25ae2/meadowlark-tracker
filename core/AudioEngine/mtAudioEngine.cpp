@@ -145,6 +145,9 @@ audioEngine::audioEngine()
 
     connectInputToOutput(&input, &output);
     connectInputToMixer(&input, &mixerAndFxs);
+#ifdef PLATFORM_DESKTOP
+    connectExternalInstrumentsToMixer(&externalInstrumentsStream, &mixerAndFxs);
+#endif
     connectMixerToOutput(&mixerAndFxs, &output);
     connectMixerToExportQueue(&mixerAndFxs, &exportQueues);
     connectSpecialInputsToOutput(&output);
@@ -176,7 +179,10 @@ void audioEngine::init(Platform* platform, [[maybe_unused]] Synth* synth)
     radio = platform->getRadio();
     usb = platform->getUsb();
 
-#ifdef PLATFORM_IMX
+#if defined(PLATFORM_DESKTOP)
+    externalInstrumentsStream.setInstruments(platform->getExternalInstruments());
+    AudioMemory(80 + ExternalInstruments::kBusCount);
+#elif defined(PLATFORM_IMX)
     AudioMemory(80);
 #else
     AudioMemory(70);
@@ -435,6 +441,35 @@ void audioEngine::connectInputToMixer(AudioInput* input, MixerAndFxs<kVoices>* m
                           mixerAndFxs->getTracksAndSendsMixer(MixerAndFxChannelType::kRight),
                           kTracksAndSendsMixerInputIdx));
 }
+
+#ifdef PLATFORM_DESKTOP
+// Dry into the last input of the master mixers, the sends into the delay's and reverb's
+// input mixers after the tracks and line in (at unity: the instruments set their levels).
+void audioEngine::connectExternalInstrumentsToMixer(ExternalInstrumentsStream* instruments,
+                                                    MixerAndFxs<kVoices>* mixerAndFxs)
+{
+    using Mixer = MixerAndFxs<kVoices>;
+    constexpr int kSendInput = Mixer::kSendsInputsCount - 2;
+    constexpr int kMasterInput = Mixer::kTrackAndSendsMixerInputs - 1;
+    const struct
+    {
+        int bus;
+        AudioStream* mixer;
+        int input;
+    } routes[] = {
+        { ExternalInstruments::kDryLeft, mixerAndFxs->getTracksAndSendsMixer(MixerAndFxChannelType::kLeft), kMasterInput },
+        { ExternalInstruments::kDryRight, mixerAndFxs->getTracksAndSendsMixer(MixerAndFxChannelType::kRight), kMasterInput },
+        { ExternalInstruments::kDelayLeft, mixerAndFxs->getPreFxMixer(Mixer::FxType::kDelay), kSendInput },
+        { ExternalInstruments::kDelayRight, mixerAndFxs->getPreFxMixer(Mixer::FxType::kDelay), kSendInput + 1 },
+        { ExternalInstruments::kReverbLeft, mixerAndFxs->getPreFxMixer(Mixer::FxType::kReverb), kSendInput },
+        { ExternalInstruments::kReverbRight, mixerAndFxs->getPreFxMixer(Mixer::FxType::kReverb), kSendInput + 1 },
+    };
+    for (const auto& route : routes)
+    {
+        connections.push_back(new AudioConnection(instruments, route.bus, route.mixer, route.input));
+    }
+}
+#endif
 
 #ifndef PLATFORM_IMX
 void audioEngine::connectVoiceToOutput(AudioVoice* voice, AudioOutput* output, int idx)

@@ -9,6 +9,7 @@
 #endif
 
 #include "log.h"
+#include "TrackerImpl.h"
 
 #include <cstring>
 
@@ -177,6 +178,11 @@ void WorkspaceProjectLoad::loadProjectFromWorkspaceFinish()
         }
     }
 #endif
+
+    if (ExternalInstruments* instruments = externalInstruments())
+    {
+        instruments->loadFromWorkspace(cWorkspacePath);
+    }
 
     newFileManager.loadProjectValues();
 

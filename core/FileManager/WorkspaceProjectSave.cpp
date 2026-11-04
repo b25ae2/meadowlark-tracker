@@ -4,6 +4,7 @@
 #include "fileManagerDefs.h"
 #include "fileTransfer.h"
 #include "log.h"
+#include "TrackerImpl.h"
 
 #if FILEMANAGER_HANDLE_SYNTH == 1
 #include "Synth.h"
@@ -121,6 +122,10 @@ void WorkspaceProjectSave::saveProjectToWorkspaceFinish()
 #if FILEMANAGER_HANDLE_SYNTH == 1
     newFileManager.getSynth()->saveDirtyWorkspacePatches();
 #endif
+    if (ExternalInstruments* instruments = externalInstruments())
+    {
+        instruments->saveToWorkspace(cWorkspacePath);
+    }
 
     if (newFileManager.getStatus() == fmSavingProjectToProjects) // przejdz do kopiowania projektu
     {
@@ -159,7 +164,9 @@ bool WorkspaceProjectSave::saveProjectToWorkspace(bool forceSaveAll)
             saveSynthPatchesToWorkspace = true;
         }
 #endif
-        if (!saveSynthPatchesToWorkspace && !newFileManager.isProjectChanged())
+        ExternalInstruments* instruments = externalInstruments();
+        const bool saveExternalInstruments = instruments != nullptr && instruments->isStateDirty();
+        if (!saveSynthPatchesToWorkspace && !saveExternalInstruments && !newFileManager.isProjectChanged())
         {
             return false; // nie sejwuj jesli nic nie jest zmodyfikowane
         }
