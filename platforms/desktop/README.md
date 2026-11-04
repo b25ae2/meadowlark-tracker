@@ -49,13 +49,14 @@ workspace and powers off (about 1.5 s); closing it again quits at once.
 
 ```sh
 platforms/desktop/build/meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
-                                            [--press button@seconds ...]
+                                            [--press button@seconds[:hold] ...]
 ```
 
 Runs the core for the given time (default 3 s) without a window or sound device, prints
 how many audio blocks and display lists it produced, and can save the last frame as PNG.
-`--press down@2.5` presses a Mini button (an `input.toml` action name) for 100 ms at that
-time, through the same path as the window's input, for scripted checks.
+`--press down@2.5` presses a Mini button (an `input.toml` action name) at that time for
+100 ms, `--press menu@2:1.5` holds it for 1.5 s; presses go through the same path as the
+window's input, for scripted checks.
 
 ## Input
 

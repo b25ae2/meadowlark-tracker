@@ -115,6 +115,7 @@ class Chip
     {
         bool active = false;
         uint32_t destination = 0;
+        uint32_t options = 0;
         std::vector<uint8_t> data;
     } imageLoad;
     uint32_t lastImageEnd = 0;

@@ -3,11 +3,11 @@
 // produced. The display is rendered by the software FT812, so the last frame can be saved.
 //
 //   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
-//                       [--press button@seconds ...]
+//                       [--press button@seconds[:hold] ...]
 //
 // seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot(). --press
-// presses a Mini button (input.toml action name, e.g. "down@2.5") for 100 ms at that time,
-// through the same path as the window's input.
+// presses a Mini button (input.toml action name, e.g. "down@2.5") at that time for hold
+// seconds (default 0.1), through the same path as the window's input.
 
 #include "AudioLock.h"
 #include "PlatformDesktop.h"
@@ -36,6 +36,7 @@ struct ScriptedPress
 {
     input::ActionId button;
     double at;
+    double hold;
     bool pressed = false;
     bool released = false;
 };
@@ -77,10 +78,12 @@ int main(int argc, char** argv)
             if (at == std::string::npos || !input::parseAction(spec.substr(0, at), button) ||
                 !input::isButtonAction(button))
             {
-                std::fprintf(stderr, "meadowlark: --press wants <button>@<seconds>, got %s\n", spec.c_str());
+                std::fprintf(stderr, "meadowlark: --press wants <button>@<seconds>[:hold], got %s\n", spec.c_str());
                 return 2;
             }
-            presses.push_back({ button, std::atof(spec.c_str() + at + 1) });
+            const size_t colon = spec.find(':', at);
+            const double hold = colon == std::string::npos ? 0.1 : std::atof(spec.c_str() + colon + 1);
+            presses.push_back({ button, std::atof(spec.c_str() + at + 1), hold });
         }
         else
         {
@@ -138,7 +141,7 @@ int main(int argc, char** argv)
                 press.pressed = true;
                 platform.desktopButtons().press(press.button);
             }
-            else if (press.pressed && !press.released && elapsed >= press.at + 0.1)
+            else if (press.pressed && !press.released && elapsed >= press.at + press.hold)
             {
                 press.released = true;
                 platform.desktopButtons().release(press.button);

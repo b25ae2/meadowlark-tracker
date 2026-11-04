@@ -1,6 +1,7 @@
 // FT812 coprocessor: memory map, command FIFO parsing and widget expansion.
 
 #include "EveChip.h"
+#include "EveImage.h"
 
 #include "FT81x.h"
 
@@ -428,10 +429,24 @@ bool Chip::continueImageLoad()
     }
     consume(padded - before);
 
-    // TODO(phase 2): decode with stb_image into RGB565 at imageLoad.destination.
-    lastImageWidth = width;
-    lastImageHeight = height;
-    lastImageEnd = imageLoad.destination + width * height * 2;
+    DecodedImage image;
+    if (decodeImage(imageLoad.data.data(), length, (imageLoad.options & OPT_MONO) != 0, image))
+    {
+        writeMemory(imageLoad.destination, image.pixels.data(), image.pixels.size());
+        if ((imageLoad.options & OPT_NODL) == 0)
+            emitSetBitmap(imageLoad.destination, image.format, image.width, image.height);
+        lastImageWidth = image.width;
+        lastImageHeight = image.height;
+        lastImageEnd = imageLoad.destination + static_cast<uint32_t>(image.pixels.size());
+    }
+    else
+    {
+        // The chip leaves memory alone on a bad image; core only reads the properties.
+        std::fprintf(stderr, "eve: CMD_LOADIMAGE could not decode %zu bytes\n", length);
+        lastImageWidth = width;
+        lastImageHeight = height;
+        lastImageEnd = imageLoad.destination;
+    }
     imageLoad.active = false;
     imageLoad.data.clear();
     return true;
@@ -773,6 +788,7 @@ bool Chip::executeOne()
             }
             imageLoad.active = true;
             imageLoad.destination = p[0];
+            imageLoad.options = p[1];
             imageLoad.data.clear();
             consume(12);
             return true;

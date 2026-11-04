@@ -97,6 +97,7 @@ add_library(meadowlark_platform OBJECT
   source/DesktopDisplayDriver.cpp
   source/DesktopFileSystem.cpp
   source/eve/EveCoprocessor.cpp
+  source/eve/EveImage.cpp
   source/eve/EveRenderer.cpp
   source/hardware.cpp
   source/input/Actions.cpp
@@ -104,6 +105,9 @@ add_library(meadowlark_platform OBJECT
   source/PlatformDesktop.cpp
   source/PngWriter.cpp)
 target_include_directories(meadowlark_platform PUBLIC source)
+target_include_directories(meadowlark_platform SYSTEM PRIVATE ${ROOT_DIR}/util/3rdparty)
+# stb_image is third-party code; keep its warnings out of the platform layer's.
+set_source_files_properties(source/eve/EveImage.cpp PROPERTIES COMPILE_OPTIONS "-w")
 target_link_libraries(meadowlark_platform PUBLIC meadowlark_core)
 # Actions.cpp includes core's interface headers, which define static functions.
 target_compile_options(meadowlark_platform PRIVATE -Wall -Wextra
@@ -157,6 +161,10 @@ target_link_libraries(layout_probe PRIVATE meadowlark_platform)
 # Hashes of the DSP fallbacks' outputs; tools/check_dsp.sh compares them with the ARM asm.
 add_executable(dsp_vectors tests/dsp_vectors.cpp)
 target_link_libraries(dsp_vectors PRIVATE meadowlark_platform)
+
+# CMD_LOADIMAGE decoding in the software FT812.
+add_executable(eve_image_test tests/eve_image_test.cpp)
+target_link_libraries(eve_image_test PRIVATE meadowlark_platform)
 
 # DesktopFileSystem semantics; takes a scratch directory to work in.
 add_executable(fs_test tests/fs_test.cpp)
