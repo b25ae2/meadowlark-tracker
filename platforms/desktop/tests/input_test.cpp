@@ -280,6 +280,7 @@ void testConfig(const std::string& dir)
     CHECK(hasBinding(config, "minus10", { "key:9" }) && hasBinding(config, "plus1", { "key:P" }));
     CHECK(hasBinding(config, "paste", { "key:V" }));
     CHECK(hasBinding(config, "middle", { "pad:a" }) && hasBinding(config, "up", { "pad:lefty-" }));
+    CHECK(hasBinding(config, "up", { "mouse:wheelup" }) && hasBinding(config, "down", { "mouse:wheeldown" }));
     CHECK(hasBinding(config, "shift", { "key:Right Shift" }) && hasBinding(config, "shift", { "pad:y" }));
     CHECK(config.gamepadMappings.size() == 1);
     CHECK(hasBinding(config, "quit", { "key:Left Ctrl", "key:Q" }));
