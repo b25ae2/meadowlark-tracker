@@ -47,6 +47,9 @@ class InterfaceMenuPopup
 
     void setModulePopupFunct();
     void handleFailedSwitching();
+#ifdef PLATFORM_DESKTOP
+    void exitFromMenu();
+#endif
 
     hControl boxMenu;
     strBoxMenuData boxMenuData;

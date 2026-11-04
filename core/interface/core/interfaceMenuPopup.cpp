@@ -48,6 +48,15 @@ static void functMiddlePopup();
 
 static void functEncoderPopup(int16_t value);
 
+// The desktop has no power button to hold, so the box after the modules quits: it saves the
+// project and powers off, as holding the power button does.
+#ifdef PLATFORM_DESKTOP
+static constexpr uint8_t kExitBox = kMenuModulesCount;
+static constexpr uint8_t kMenuBoxesCount = kMenuModulesCount + 1;
+#else
+static constexpr uint8_t kMenuBoxesCount = kMenuModulesCount;
+#endif
+
 void InterfaceMenuPopup::initPopupsDisplayControls()
 {
     boxMenuData.columnsCount = kMenuColumnsCount;
@@ -81,6 +90,15 @@ void InterfaceMenuPopup::showModulePopup(ModuleBase* sourceModule,
 
     for (int box = 0; box < boxesCount; box++)
     {
+#ifdef PLATFORM_DESKTOP
+        if (box == kExitBox)
+        {
+            menuFunctions[box] = 0;
+            modulesMenuTexts[box] = "Exit";
+            modulesMenuModes[box] = nullptr;
+            continue;
+        }
+#endif
         if (box >= kMenuModulesCount)
         {
             menuFunctions[box] = 0;
@@ -182,6 +200,14 @@ void InterfaceMenuPopup::hideModulePopup(ModuleBase* modulePtr)
 
     isVisible = false;
 
+#ifdef PLATFORM_DESKTOP
+    if (selectedBox == kExitBox)
+    {
+        exitFromMenu();
+        return;
+    }
+#endif
+
     uint8_t moduleToSwitch = modules[menuFunctions[selectedBox]].button;
     uint32_t startOptions = modules[menuFunctions[selectedBox]].defaultOption;
 
@@ -210,6 +236,25 @@ void InterfaceMenuPopup::hideModulePopup(ModuleBase* modulePtr)
         }
     }
 }
+
+#ifdef PLATFORM_DESKTOP
+// The shutdown screen replaces the module; the power-off sequence runs to its end, since
+// no power button release comes to cancel it.
+void InterfaceMenuPopup::exitFromMenu()
+{
+    if (isVisible)
+    {
+        display.setControlHide(boxMenu);
+        display.refreshControl(boxMenu);
+        display.synchronizeRefresh();
+        isVisible = false;
+    }
+    switchModuleCallback = nullptr;
+    mtInterface.ip->clearButtonsRange(interfaceButton0, interfaceButton32);
+    mtInterface.ip->clearAllPots();
+    mtInterface.handlePowerButtonAction(1);
+}
+#endif
 
 void InterfaceMenuPopup::setModulePopupFunct()
 {
@@ -263,9 +308,9 @@ void InterfaceMenuPopup::changeModulePopupValue(int16_t value, uint8_t dir)
                 break;
             default: selectedBox = 0; break;
         }
-        if (selectedBox >= kMenuModulesCount)
+        if (selectedBox >= kMenuBoxesCount)
         {
-            selectedBox = kMenuModulesCount - 1;
+            selectedBox = kMenuBoxesCount - 1;
         }
     }
     else
@@ -274,9 +319,9 @@ void InterfaceMenuPopup::changeModulePopupValue(int16_t value, uint8_t dir)
         {
             selectedBox = 0;
         }
-        else if (selectedBox + value > (kMenuModulesCount - 1))
+        else if (selectedBox + value > (kMenuBoxesCount - 1))
         {
-            selectedBox = kMenuModulesCount - 1;
+            selectedBox = kMenuBoxesCount - 1;
         }
         else
         {
@@ -297,6 +342,13 @@ void InterfaceMenuPopup::setModulePopupValue(int16_t value)
 
 void InterfaceMenuPopup::changeModuleMode()
 {
+#ifdef PLATFORM_DESKTOP
+    if (selectedBox == kExitBox)
+    {
+        exitFromMenu();
+        return;
+    }
+#endif
     ModuleBase* destModule = sourceModule;
     uint32_t options = 0;
     bool srcIsDst = modules[menuFunctions[selectedBox]].module == sourceModule;
