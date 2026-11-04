@@ -73,7 +73,9 @@ void cSamplePlayback::initDisplayControls()
     bgLabel = display.createControl<cBgLabel>(&prop2);
 
     playModeList.linesCount = 8;
-    playModeList.start = editorInstrument->playMode;
+    // No instrument yet when the module first opens with a MIDI instrument selected (start()
+    // sets it only for sample instruments); the hardware reads address 0 without faulting.
+    playModeList.start = editorInstrument != nullptr ? editorInstrument->playMode : 0;
     playModeList.length = playModeCount;
     playModeList.data = playModeNames;
     prop.x = (800 / 8) * 6 + 1;
