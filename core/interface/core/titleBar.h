@@ -37,6 +37,8 @@ class TitleBar
     static constexpr int kBoxHideDelayLoopCount = 3;
 
     static constexpr int kBatteryNotPresent = -1;
+    // The battery icon shown or hidden, the right label beside it or in its place.
+    void placeBattery(bool present);
     bool visible = false;
 
     hControl titleLabel = -1;

@@ -3,13 +3,14 @@
 // Desktop implementation of core's Platform interfaces.
 //
 // The display is a software FT812 (DesktopDisplayDriver), the SD card a host directory
-// (DesktopFileSystem) and the buttons are fed by the front end's input layer
-// (DesktopButtons), and the MIDI ports queue messages for the front end's MIDI backend
-// (midi/MidiPorts.h). Everything else except the clock is still a safe stub. Audio output
-// is the front end's (audio/AudioRenderer.h); DesktopCodec turns the firmware's volume, mute
-// and input gain into gains.
+// (DesktopFileSystem), the buttons are fed by the front end's input layer (DesktopButtons),
+// the MIDI ports queue messages for the front end's MIDI backend (midi/MidiPorts.h) and the
+// battery is the computer's (SystemBattery.h). Everything else except the clock is still a
+// safe stub. Audio output is the front end's (audio/AudioRenderer.h); DesktopCodec turns the
+// firmware's volume, mute and input gain into gains.
 
 #include "ConfigManager.h"
+#include "SystemBattery.h"
 #include "DesktopButtons.h"
 #include "DesktopDisplayDriver.h"
 #include "DesktopFileSystem.h"
@@ -141,19 +142,6 @@ class StubLeds : public Leds
     void setLed(int, bool, int) override {}
 };
 
-// Desktop runs on mains power: always full and not charging.
-class StubBattery : public Battery
-{
-  public:
-    void enableMonitoring() override {}
-    int getLevel() override { return 100; }
-    float getVoltage() override { return 4.2f; }
-    bool getCharging() override { return false; }
-    int getTimeTo() override { return 0; }
-    bool getState() override { return true; }
-    bool isEmpty() override { return false; }
-};
-
 class StubEncoder : public Encoder
 {
   public:
@@ -253,7 +241,7 @@ class PlatformDesktop : public Platform
     DesktopButtons buttons;
     StubSwitchGroup pads;
     StubLeds leds;
-    StubBattery battery;
+    SystemBattery battery;
     StubEncoder encoder;
     DesktopDisplayDriver display;
     StubUsbAudio usbAudio;

@@ -113,7 +113,8 @@ add_library(meadowlark_platform OBJECT
   source/midi/MidiPorts.cpp
   source/platform_math.cpp
   source/PlatformDesktop.cpp
-  source/PngWriter.cpp)
+  source/PngWriter.cpp
+  source/SystemBattery.cpp)
 target_include_directories(meadowlark_platform PUBLIC source)
 target_include_directories(meadowlark_platform SYSTEM PRIVATE ${ROOT_DIR}/util/3rdparty)
 # stb_image is third-party code; keep its warnings out of the platform layer's.
@@ -125,6 +126,10 @@ target_compile_options(meadowlark_platform PRIVATE -Wall -Wextra
 
 find_package(Threads REQUIRED)
 target_link_libraries(meadowlark_platform PUBLIC Threads::Threads)
+if(APPLE)
+  # SystemBattery: the power sources.
+  target_link_libraries(meadowlark_platform PUBLIC "-framework IOKit" "-framework CoreFoundation")
+endif()
 
 # --- executables ---------------------------------------------------------------------------
 # Headless runner: renders audio blocks and display lists without a window or sound device.
@@ -287,6 +292,10 @@ target_link_libraries(dsp_vectors PRIVATE meadowlark_platform)
 # CMD_LOADIMAGE decoding in the software FT812.
 add_executable(eve_image_test tests/eve_image_test.cpp)
 target_link_libraries(eve_image_test PRIVATE meadowlark_platform)
+
+# SystemBattery's power_supply reading with fake directories; prints the real battery too.
+add_executable(battery_test tests/battery_test.cpp)
+target_link_libraries(battery_test PRIVATE meadowlark_platform)
 
 # DesktopFileSystem semantics; takes a scratch directory to work in.
 add_executable(fs_test tests/fs_test.cpp)

@@ -15,6 +15,12 @@ static elapsedMillis refreshTimer;
 #define BATTERY_ENABLED 1
 #endif
 
+// A computer may have no battery at all: the icon goes and the right label takes its place,
+// instead of the Mini's crossed-out battery.
+#if defined(BATTERY_ENABLED) && defined(PLATFORM_DESKTOP)
+#define BATTERY_HIDDEN_WHEN_MISSING 1
+#endif
+
 void TitleBar::init(Synth* synth, [[maybe_unused]] Battery* battery)
 {
     this->synth = synth;
@@ -111,8 +117,12 @@ void TitleBar::show(bool showRightLabel)
     }
 
 #ifdef BATTERY_ENABLED
+#ifdef BATTERY_HIDDEN_WHEN_MISSING
+    placeBattery(lastBatteryLevel != kBatteryNotPresent);
+#else
     display.setControlShow(battery);
     display.refreshControl(battery);
+#endif
 #endif
 
     display.setControlShow(bar);
@@ -200,6 +210,23 @@ void TitleBar::setBatteryValue([[maybe_unused]] int valuePercent, [[maybe_unused
     display.refreshControl(battery);
 #endif
 }
+
+#ifdef BATTERY_HIDDEN_WHEN_MISSING
+void TitleBar::placeBattery(bool present)
+{
+    display.setControlPosition(rightLabel, present ? 790 - 28 : 790, 13);
+    display.refreshControl(rightLabel);
+    if (present)
+    {
+        display.setControlShow(battery);
+    }
+    else
+    {
+        display.setControlHide(battery);
+    }
+    display.refreshControl(battery);
+}
+#endif
 
 void TitleBar::showRightLabel(bool show)
 {
@@ -315,6 +342,12 @@ void TitleBar::refresh()
 
     if (lastBatteryLevel != level || charging != lastBatteryCharging)
     {
+#ifdef BATTERY_HIDDEN_WHEN_MISSING
+        if ((level == kBatteryNotPresent) != (lastBatteryLevel == kBatteryNotPresent))
+        {
+            placeBattery(level != kBatteryNotPresent);
+        }
+#endif
         lastBatteryCharging = charging;
         lastBatteryLevel = level;
         setBatteryValue(lastBatteryLevel, lastBatteryCharging);
