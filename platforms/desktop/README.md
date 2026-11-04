@@ -41,7 +41,7 @@ Apple clang 15 on macOS 26; UBSan works on both.
 platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
                                    [--scale n] [--fullscreen] [--print-input-config]
                                    [--audio pipewire|sdl|none] [--audio-buffer frames]
-                                   [--no-host-folders]
+                                   [--audio-input auto|always|off] [--no-host-folders]
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
@@ -54,6 +54,15 @@ of `--audio-buffer` frames (default 512, about 12 ms); if the device asks for mo
 callback, the buffer grows to that plus one block. The exit message reports underruns. The
 firmware's master volume applies as on the Mini's headphone output, with 81 % (the default)
 at 0 dB; the hardware's analog boost above that is not reproduced, use the system volume.
+
+Audio input (the Sample Recorder's line-in and mic sources, and input monitoring) comes
+from the system's default input: a PipeWire capture stream when the output is PipeWire,
+SDL otherwise. With `--audio-input auto` (the default) the device opens the first time the
+firmware selects an input, so macOS asks for microphone permission only then; `always`
+opens it at start, `off` records silence. The Sample Recorder's gain applies digitally as
+the codec's ADC stage (line-in 0–22.5 dB in 1.5 dB steps; for mic, only the part above the
+Mini's analog preamp). The uConsole has no built-in input; it needs a USB microphone or
+audio interface set as the default source.
 
 Closing the window holds the Mini's power button, so the firmware saves the project to the
 workspace and powers off (about 1.5 s); closing it again quits at once.
@@ -127,6 +136,8 @@ platforms/desktop/build/input_test /tmp/input    # button timing, bindings, inpu
 platforms/desktop/build/eve_image_test           # JPEG/PNG decoding in the FT812 emulator
 platforms/desktop/build/audio_test [pipewire|sdl] # sound output runs in real time without
                                                   # underruns; silent unless --tone
+platforms/desktop/build/audio_test pipewire --capture # also records the output's monitor and
+                                                      # checks a quiet tone comes back
 ```
 
 ## Checks against the firmware

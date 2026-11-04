@@ -61,6 +61,50 @@ void DesktopCodec::setMasterVolume(float volume)
     volumeGain = std::pow(10.0f, decibels / 20.0f);
 }
 
+void DesktopCodec::setInputType(InputType input)
+{
+    inputType = input;
+    updateInputGain();
+    noteInputUse();
+}
+
+void DesktopCodec::setLineInLevel(int level)
+{
+    // control_sgtl5000.cpp lineInLevel: CHIP_ANA_ADC_CTRL steps, clamped to 15.
+    lineInStage = level < 0 ? 0 : (level > 15 ? 15 : level);
+    updateInputGain();
+    noteInputUse();
+}
+
+void DesktopCodec::setMicGain(int gainDb)
+{
+    // control_sgtl5000.cpp micGain: the preamp takes 40, 30 or 20 dB, the ADC stage the
+    // rest in 1.5 dB steps (at most 15).
+    int rest = gainDb < 0 ? 0 : gainDb;
+    if (rest >= 40)
+        rest -= 40;
+    else if (rest >= 30)
+        rest -= 30;
+    else if (rest >= 20)
+        rest -= 20;
+    const int stage = rest * 2 / 3;
+    micStage = stage > 15 ? 15 : stage;
+    updateInputGain();
+    noteInputUse();
+}
+
+void DesktopCodec::updateInputGain()
+{
+    const int stage = inputType == InputType::kMic ? micStage : lineInStage;
+    inputLinearGain = std::pow(10.0f, stage * 1.5f / 20.0f);
+}
+
+void DesktopCodec::noteInputUse()
+{
+    if (inputArmed)
+        inputRequested = true;
+}
+
 //------------------------------------------------------------------------------
 // StubSwitchGroup
 

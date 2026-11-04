@@ -5,6 +5,7 @@
 //   meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
 //              [--scale n] [--fullscreen] [--print-input-config]
 //              [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]
+//              [--audio-input auto|always|off]
 //
 // Closing the window holds the power button, so core saves the project to the workspace and
 // powers off, as on the Mini. A second close quits at once.
@@ -14,7 +15,9 @@
 #include "PlatformDesktop.h"
 #include "PngWriter.h"
 #include "Tracker.h"
+#include "audio/AudioCapture.h"
 #include "audio/AudioRenderer.h"
+#include "audio/SdlAudioInput.h"
 #include "audio/SdlAudioOutput.h"
 #include "input/Actions.h"
 #include "input/InputConfig.h"
@@ -22,11 +25,13 @@
 #include "input/SdlInput.h"
 
 #ifdef MEADOWLARK_HAVE_PIPEWIRE
+#include "audio/PipeWireInput.h"
 #include "audio/PipeWireOutput.h"
 #endif
 
 #include <SDL3/SDL.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -64,6 +69,8 @@ struct Options
     int scale = 1;
     std::string audio = kDefaultAudio;
     int audioBuffer = 512; // frames, about 12 ms
+    // auto: open the capture device when the Sample Recorder first configures its input.
+    std::string audioInput = "auto";
     bool hostFolders = true;
 };
 
@@ -71,7 +78,8 @@ void printUsage()
 {
     std::printf("usage: meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]\n"
                 "                  [--scale n] [--fullscreen] [--print-input-config]\n"
-                "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n");
+                "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n"
+                "                  [--audio-input auto|always|off]\n");
 }
 
 class App
@@ -93,6 +101,7 @@ class App
     void present();
     void startAudio();
     void stopAudio();
+    void startCapture();
     void renderAudioBlock(int16_t* left, int16_t* right, int frames);
     void renderAudioInline();
 
@@ -103,6 +112,12 @@ class App
 
     AudioRenderer audioRenderer;
     std::unique_ptr<AudioOutput> audioOutput;
+    AudioCaptureBuffer captureBuffer;
+    std::unique_ptr<AudioInput> audioInput;
+    std::atomic<bool> captureActive{ false };
+    // Render thread only: the block core reads as its I2S input, and the USB input's.
+    int16_t inputBlock[kAudioBlockSamples * 2] = {};
+    int16_t usbInputBlock[kAudioBlockSamples * 2] = {};
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -202,6 +217,10 @@ bool App::init()
     tracker->init(&platform);
     nextAudioBlock = std::chrono::steady_clock::now();
     startAudio();
+    if (options.audioInput == "always")
+        startCapture();
+    else if (options.audioInput == "auto")
+        platform.desktopCodec().armInputRequests();
     return true;
 }
 
@@ -250,8 +269,48 @@ void App::startAudio()
     audioRenderer.stop();
 }
 
+// Same backend family as the output: PipeWire's capture with PipeWire output, else SDL's.
+void App::startCapture()
+{
+    if (audioInput || !audioRenderer.isRunning())
+        return;
+
+    std::vector<std::string> backends;
+    if (audioOutput && std::strcmp(audioOutput->name(), "pipewire") == 0)
+        backends.push_back("pipewire");
+    backends.push_back("sdl");
+    for (const std::string& backend : backends)
+    {
+        std::unique_ptr<AudioInput> input;
+#ifdef MEADOWLARK_HAVE_PIPEWIRE
+        if (backend == "pipewire")
+            input = std::make_unique<PipeWireInput>();
+#endif
+        if (backend == "sdl")
+            input = std::make_unique<SdlAudioInput>();
+        if (input && input->start(captureBuffer))
+        {
+            audioInput = std::move(input);
+            captureActive = true;
+            std::printf("meadowlark: audio input %s\n", audioInput->name());
+            return;
+        }
+    }
+    std::fprintf(stderr, "meadowlark: no audio input, recording gets silence\n");
+}
+
 void App::stopAudio()
 {
+    if (audioInput)
+    {
+        captureActive = false;
+        audioInput->stop();
+        audioInput.reset();
+        std::printf("meadowlark: audio input %llu frames, %llu underruns, %llu frames dropped\n",
+                    static_cast<unsigned long long>(captureBuffer.framesCaptured()),
+                    static_cast<unsigned long long>(captureBuffer.underruns()),
+                    static_cast<unsigned long long>(captureBuffer.framesDropped()));
+    }
     if (audioOutput)
     {
         audioOutput->stop();
@@ -272,7 +331,26 @@ void App::stopAudio()
 // codec's volume and the firmware's output mute apply.
 void App::renderAudioBlock(int16_t* left, int16_t* right, int frames)
 {
+    // The codec's input: one captured block, with the ADC gain, which core reads while it
+    // renders this block (Input.cpp keeps the pointer, as with the I2S DMA buffer).
+    const bool withInput = captureActive.load(std::memory_order_acquire);
+    if (withInput)
+    {
+        captureBuffer.readBlock(inputBlock, static_cast<size_t>(frames));
+        const float inputGain = platform.desktopCodec().inputGain();
+        if (inputGain != 1.0f)
+        {
+            for (int i = 0; i < frames * 2; i++)
+            {
+                const long sample = std::lrintf(inputBlock[i] * inputGain);
+                inputBlock[i] = static_cast<int16_t>(sample > 32767 ? 32767 : (sample < -32768 ? -32768 : sample));
+            }
+        }
+    }
+
     AudioLock::acquire();
+    if (withInput)
+        tracker->updateInputAudioBuffers(inputBlock, usbInputBlock, frames);
     tracker->updateAudioBuffers(left, right, frames);
     AudioLock::release();
 
@@ -296,6 +374,8 @@ void App::run()
 
         if (!audioRenderer.isRunning())
             renderAudioInline();
+        if (platform.desktopCodec().takeInputRequest())
+            startCapture();
         platform.desktopButtons().update();
         tracker->update();
 
@@ -484,6 +564,8 @@ int main(int argc, char** argv)
             options.audio = argv[++i];
         else if (std::strcmp(arg, "--audio-buffer") == 0 && i + 1 < argc)
             options.audioBuffer = std::atoi(argv[++i]);
+        else if (std::strcmp(arg, "--audio-input") == 0 && i + 1 < argc)
+            options.audioInput = argv[++i];
         else if (std::strcmp(arg, "--no-host-folders") == 0)
             options.hostFolders = false;
         else if (std::strcmp(arg, "--print-input-config") == 0)

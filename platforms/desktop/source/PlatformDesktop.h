@@ -48,15 +48,20 @@ class StubSwitchGroup : public SwitchGroup
 // The SGTL5000's output stage as a gain on the rendered audio. Volume follows the codec's
 // headphone curve (0.5 dB steps, 100 % = +12 dB down to -51.5 dB); the firmware's default
 // of 81 % is its 0 dB point. Above that the hardware boosts the analog output, which would
-// clip here, so the gain stops at 0 dB. Everything else (DAP, EQ, inputs) is not modelled.
+// clip here, so the gain stops at 0 dB.
+//
+// Input gain is the codec's ADC stage, 0 to 22.5 dB in 1.5 dB steps, for line in and mic
+// alike. The mic preamp (+20 to +40 dB) is left out: a computer's microphone input arrives
+// already amplified, and the system's input volume plays that part. DAP and EQ are not
+// modelled.
 class DesktopCodec : public Sgtl5000
 {
   public:
     void init() override {}
-    void setInputType(InputType) override {}
+    void setInputType(InputType input) override;
     void setHeadphoneSource(HeadphoneSource) override {}
-    void setLineInLevel(int) override {}
-    void setMicGain(int) override {}
+    void setLineInLevel(int level) override;
+    void setMicGain(int gainDb) override;
     void setHeadphoneMuted(bool muted) override { headphoneMuted = muted; }
     void setMasterVolume(float volume) override;
     void setAutoVolumeEnabled(bool) override {}
@@ -71,8 +76,26 @@ class DesktopCodec : public Sgtl5000
 
     // Linear gain for the output, 0 when muted. Safe to read from the audio thread.
     float outputGain() const { return headphoneMuted ? 0.0f : volumeGain.load(std::memory_order_relaxed); }
+    // Linear gain for the input. Safe to read from the audio thread.
+    float inputGain() const { return inputLinearGain.load(std::memory_order_relaxed); }
+
+    // After arming, the next input setting (the Sample Recorder configuring its source)
+    // raises a request the front end takes to open the capture device. Core's own input
+    // set-up at start-up comes before arming.
+    void armInputRequests() { inputArmed = true; }
+    bool takeInputRequest() { return inputRequested.exchange(false); }
 
   private:
+    void noteInputUse();
+    void updateInputGain();
+
+    InputType inputType = InputType::kLineIn;
+    int lineInStage = 0; // ADC gain steps, 0..15
+    int micStage = 0;
+    std::atomic<float> inputLinearGain{ 1.0f };
+    bool inputArmed = false;
+    std::atomic<bool> inputRequested{ false };
+
     std::atomic<bool> headphoneMuted{ false };
     std::atomic<float> volumeGain{ 1.0f };
 };

@@ -2,13 +2,22 @@
 // whether the device consumed audio at the engine's rate, and how many underruns there were.
 // Plays silence unless --tone is given (a quiet 440 Hz sine).
 //
-//   audio_test [pipewire|sdl] [--seconds n] [--buffer frames] [--tone]
+// --capture also records for the same time and checks the input rate. With PipeWire it
+// records the output's monitor and plays a 440 Hz tone at about -50 dBFS, which must come
+// back; with SDL it records the default input device.
+//
+//   audio_test [pipewire|sdl] [--seconds n] [--buffer frames] [--tone] [--capture]
 
+#include "audio/AudioCapture.h"
 #include "audio/AudioRenderer.h"
+#include "audio/SdlAudioInput.h"
 #include "audio/SdlAudioOutput.h"
 #ifdef MEADOWLARK_HAVE_PIPEWIRE
+#include "audio/PipeWireInput.h"
 #include "audio/PipeWireOutput.h"
 #endif
+
+#include <algorithm>
 
 #include <SDL3/SDL.h>
 
@@ -31,6 +40,7 @@ int main(int argc, char** argv)
     double seconds = 3.0;
     int buffer = 512;
     bool tone = false;
+    bool capture = false;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--seconds") == 0 && i + 1 < argc)
@@ -39,6 +49,8 @@ int main(int argc, char** argv)
             buffer = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "--tone") == 0)
             tone = true;
+        else if (std::strcmp(argv[i], "--capture") == 0)
+            capture = true;
         else
             backend = argv[i];
     }
@@ -56,13 +68,36 @@ int main(int argc, char** argv)
         return 2;
     }
 
+    std::unique_ptr<AudioInput> input;
+    const bool loopback = capture && backend == "pipewire";
+    if (capture)
+    {
+#ifdef MEADOWLARK_HAVE_PIPEWIRE
+        if (backend == "pipewire")
+            input = std::make_unique<PipeWireInput>(true);
+#endif
+        if (backend == "sdl")
+            input = std::make_unique<SdlAudioInput>();
+    }
+
+    // Loopback tone: quiet enough not to be noticed, far above silence.
+    const double amplitude = tone ? 3000.0 : (loopback ? 100.0 : 0.0);
+    AudioCaptureBuffer captured;
+    int16_t inputBlock[AudioRenderer::kBlockFrames * 2];
+    int inputPeak = 0;
     double phase = 0.0;
     AudioRenderer renderer;
     renderer.start(
       [&](int16_t* left, int16_t* right, int frames) {
+          if (input)
+          {
+              captured.readBlock(inputBlock, static_cast<size_t>(frames));
+              for (int i = 0; i < frames * 2; i++)
+                  inputPeak = std::max(inputPeak, std::abs(static_cast<int>(inputBlock[i])));
+          }
           for (int i = 0; i < frames; i++)
           {
-              const int16_t value = tone ? static_cast<int16_t>(3000.0 * std::sin(phase)) : 0;
+              const int16_t value = static_cast<int16_t>(amplitude * std::sin(phase));
               phase += 2.0 * M_PI * 440.0 / AudioRenderer::kSampleRate;
               left[i] = right[i] = value;
           }
@@ -72,17 +107,24 @@ int main(int argc, char** argv)
 
     if (!output->start(renderer))
         return 1;
+    if (input && !input->start(captured))
+        return 1;
 
     // Let the stream settle before measuring.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     const uint64_t startBlocks = renderer.blocksRendered();
     const uint64_t startUnderruns = renderer.underruns();
+    const uint64_t startCaptured = captured.framesCaptured();
+    inputPeak = 0;
     const auto start = std::chrono::steady_clock::now();
     std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     const uint64_t blocks = renderer.blocksRendered() - startBlocks;
     const uint64_t underruns = renderer.underruns() - startUnderruns;
+    const uint64_t capturedFrames = captured.framesCaptured() - startCaptured;
 
+    if (input)
+        input->stop();
     output->stop();
     renderer.stop();
     SDL_Quit();
@@ -99,7 +141,22 @@ int main(int argc, char** argv)
 
     // Within 2 %: the device clock and the measurement window don't line up exactly.
     const bool rateOk = std::fabs(rate - AudioRenderer::kSampleRate) < AudioRenderer::kSampleRate * 0.02;
-    if (!rateOk || underruns != 0)
+    bool inputOk = true;
+    if (input)
+    {
+        const double inputRate = capturedFrames / elapsed;
+        std::printf("  input %s: %.0f frames/s, peak %d, %llu underruns, %llu frames dropped\n",
+                    input->name(),
+                    inputRate,
+                    inputPeak,
+                    static_cast<unsigned long long>(captured.underruns()),
+                    static_cast<unsigned long long>(captured.framesDropped()));
+        inputOk = std::fabs(inputRate - AudioRenderer::kSampleRate) < AudioRenderer::kSampleRate * 0.02;
+        // The loopback tone must come back (resampling and mixing change it a little).
+        if (loopback)
+            inputOk = inputOk && inputPeak > amplitude * 0.5 && inputPeak < amplitude * 2.0;
+    }
+    if (!rateOk || underruns != 0 || !inputOk)
     {
         std::printf("audio_test: FAILED\n");
         return 1;

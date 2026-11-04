@@ -97,6 +97,7 @@ target_compile_options(meadowlark_core
 # OBJECT library: core/ calls back into these (interrupt lock, sin_q15, mute), so their
 # objects must always be linked, whatever the linker's archive ordering rules are.
 add_library(meadowlark_platform OBJECT
+  source/audio/AudioCapture.cpp
   source/audio/AudioRenderer.cpp
   source/AudioLock.cpp
   source/CrashHandler.cpp
@@ -150,7 +151,7 @@ if(MEADOWLARK_SDL)
   target_compile_options(meadowlark_input PRIVATE -Wall -Wextra)
 
   # The application: SDL3 window, input and sound.
-  add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp)
+  add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp source/audio/SdlAudioInput.cpp)
   target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input)
   target_compile_options(meadowlark PRIVATE -Wall -Wextra)
   set_target_properties(meadowlark PROPERTIES ENABLE_EXPORTS ON)
@@ -159,7 +160,7 @@ if(MEADOWLARK_SDL)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
     # PipeWire's SPA headers are C99-style; keep their warnings out of ours.
-    add_library(meadowlark_pipewire STATIC source/audio/PipeWireOutput.cpp)
+    add_library(meadowlark_pipewire STATIC source/audio/PipeWireOutput.cpp source/audio/PipeWireInput.cpp)
     target_include_directories(meadowlark_pipewire PUBLIC source)
     target_link_libraries(meadowlark_pipewire PUBLIC PkgConfig::PIPEWIRE)
     target_compile_options(meadowlark_pipewire PRIVATE -Wall -Wextra -Wno-missing-field-initializers
@@ -168,8 +169,8 @@ if(MEADOWLARK_SDL)
     target_compile_definitions(meadowlark PRIVATE MEADOWLARK_HAVE_PIPEWIRE)
   endif()
 
-  # Sound output: renderer and backend running in real time; plays silence unless --tone.
-  add_executable(audio_test tests/audio_test.cpp source/audio/SdlAudioOutput.cpp)
+  # Sound output (and, with --capture, input) running in real time; plays silence unless --tone.
+  add_executable(audio_test tests/audio_test.cpp source/audio/SdlAudioOutput.cpp source/audio/SdlAudioInput.cpp)
   target_link_libraries(audio_test PRIVATE meadowlark_platform SDL3::SDL3)
   if(MEADOWLARK_PIPEWIRE)
     target_link_libraries(audio_test PRIVATE meadowlark_pipewire)
