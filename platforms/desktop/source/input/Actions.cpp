@@ -18,8 +18,17 @@ struct NamedAction
 };
 
 // The Tracker Mini's buttons, named after their labels. Several share an index on purpose:
-// "fx2" and "vol" are the same button.
+// "fx2" and "vol" are the same button. screen1..screen8 are the eight buttons under the
+// display, left to right, whose functions the labels at the bottom of the screen show.
 constexpr NamedAction kNames[] = {
+    { "screen1", interfaceButton0 },
+    { "screen2", interfaceButton1 },
+    { "screen3", interfaceButton2 },
+    { "screen4", interfaceButton3 },
+    { "screen5", interfaceButton4 },
+    { "screen6", interfaceButton5 },
+    { "screen7", interfaceButton6 },
+    { "screen8", interfaceButton7 },
     { "play", interfaceButtonPlay },
     { "rec", interfaceButtonRec },
     { "shift", interfaceButtonShift },

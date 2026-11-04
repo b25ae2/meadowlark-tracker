@@ -35,6 +35,7 @@ constexpr char kDefaultConfig[] = R"toml(# Meadowlark input bindings.
 # `meadowlark --trace-input` prints the name of every input you press.
 #
 # Actions, the Tracker Mini's buttons:
+#   screen1 ... screen8 (the buttons under the display, for the labels along its bottom)
 #   play rec shift copy insert delete up down left right
 #   note instr fx1 fx2 (= vol) pattern menu middle fn1 fn2 fn3 fn4 plus10 plus1 minus1 minus10
 #   button0 ... button43 (any interface button by index)
@@ -71,10 +72,20 @@ pattern = ["key:5"]
 
 menu    = ["key:Escape"]
 middle  = ["key:Return"]
-fn1     = ["key:F1"]
-fn2     = ["key:F2"]
-fn3     = ["key:F3"]
-fn4     = ["key:F4"]
+fn1     = ["key:6"]
+fn2     = ["key:7"]
+fn3     = ["key:8"]
+fn4     = ["key:9"]
+
+# The buttons under the screen, left to right like its labels.
+screen1 = ["key:F1"]
+screen2 = ["key:F2"]
+screen3 = ["key:F3"]
+screen4 = ["key:F4"]
+screen5 = ["key:F5"]
+screen6 = ["key:F6"]
+screen7 = ["key:F7"]
+screen8 = ["key:F8"]
 
 plus10  = ["key:PageUp"]
 minus10 = ["key:PageDown"]

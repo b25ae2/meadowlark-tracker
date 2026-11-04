@@ -15,6 +15,12 @@
 // Sample streaming reads raw sectors through the cluster map from enableFastSeek. Each file
 // gets one contiguous run of made-up clusters, and readSectorsAsync maps sectors back to the
 // file. Reads complete immediately.
+//
+// Host mounts (addHostMount) show other host directories as folders in the card's root, so
+// the firmware's file browsers can load samples from anywhere. They are read-only: every
+// write, rename and delete inside them fails, and deleting card contents never follows a
+// symlink out of the card. They appear in browser listings (createFilesList, countContainedFiles) but not
+// where the firmware walks the card itself, and a real folder of the same name wins.
 
 #include "Platform.h"
 
@@ -33,6 +39,11 @@ class DesktopFileSystem : public FileSystem
     // Creates the directory if needed. Empty string means no card.
     bool setRoot(const std::string& path);
     const std::string& root() const { return rootPath; }
+
+    // Shows hostPath as a read-only folder called name in the card's root.
+    void addHostMount(const std::string& name, const std::string& hostPath);
+    // Home (the user's home directory) and Computer (/).
+    void addDefaultHostMounts();
 
     bool isSdCardInserted() override { return !rootPath.empty(); }
     void setMountEventCallback(CardStateChangeCallback funct) override { mountCallback = funct; }
@@ -121,16 +132,28 @@ class DesktopFileSystem : public FileSystem
         uint32_t clusterCount = 0;
     };
 
+    struct Mount
+    {
+        std::string name;
+        std::string hostPath;
+    };
+
     // Host path for a card path. With mustExist false the last component may be missing
-    // (its parent must exist); it then keeps the given spelling.
-    bool resolve(const char* path, std::string& hostPath, bool mustExist = true) const;
+    // (its parent must exist); it then keeps the given spelling. inMount reports whether the
+    // path lies in a host mount (and is therefore read-only).
+    bool resolve(const char* path, std::string& hostPath, bool mustExist = true, bool* inMount = nullptr) const;
+    // Resolves a path that is about to be changed: fails for paths in host mounts.
+    bool resolveWritable(const char* path, std::string& hostPath, bool mustExist = true) const;
     bool readDirectory(const std::string& hostDir, std::vector<Entry>& entries) const;
+    // readDirectory plus the host mounts when hostDir is the card's root; for browsers only.
+    bool readListing(const std::string& hostDir, std::vector<Entry>& entries) const;
     bool filterFileEntry(const Entry& entry, enListFileFilter filter, const char* dirPath) const;
     uint16_t countFilesInSubDirectory(const char* dirPath, const char* dirName, enListFileFilter filter);
     bool deleteTree(const std::string& hostPath, bool removeSelf);
     void setHidden(const std::string& hostPath, bool hidden);
 
     std::string rootPath;
+    std::vector<Mount> mounts;
     CardStateChangeCallback mountCallback = nullptr;
 
     std::vector<Entry> nesEntries;

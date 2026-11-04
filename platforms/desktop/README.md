@@ -41,6 +41,7 @@ Apple clang 15 on macOS 26; UBSan works on both.
 platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
                                    [--scale n] [--fullscreen] [--print-input-config]
                                    [--audio pipewire|sdl|none] [--audio-buffer frames]
+                                   [--no-host-folders]
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
@@ -92,7 +93,10 @@ rec  = []   # unbound
 `platforms/desktop/build/sdl_input_probe` shows how SDL numbers a device's buttons, axes and
 hats. Buttons repeat while held with the hardware's timing.
 
-The built-in bindings are generic keyboard ones; a uConsole layout comes later.
+The built-in bindings are generic keyboard ones; a uConsole layout comes later. F1-F8 are
+the eight buttons under the screen (`screen1`-`screen8`, left to right like the labels along
+its bottom edge), 1-5 Note, Instr, FX1, FX2 and Pattern, 6-9 Fn1-Fn4, arrows, Shift, Space
+for Play, R for Rec, Return for the middle button and Escape for Menu.
 
 ## SD card
 
@@ -107,6 +111,13 @@ It is created on first start; the firmware then creates its `Workspace`, `Fonts`
 Tracker card can be copied in. Names are matched case-insensitively, like FAT. The FAT
 hidden attribute (used for `Workspace`) is kept in `.hidden` files; dot files count as
 hidden. `MEADOWLARK_FS_TRACE=1` logs file opens, existence checks and directory changes.
+
+The card's root also shows two folders from the computer: **Home** (your home directory)
+and **Computer** (`/`), so the sample loader can browse and load from anywhere, going up
+with its `/..` entry. They are read-only: renaming, deleting or saving into them fails, and
+emptying the card never reaches them (symlinks on the card are removed, not followed). A
+real card folder with the same name hides the virtual one. `--no-host-folders` turns them
+off.
 
 ## Tests
 

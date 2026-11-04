@@ -3,7 +3,7 @@
 // produced. The display is rendered by the software FT812, so the last frame can be saved.
 //
 //   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
-//                       [--press button@seconds[:hold] ...]
+//                       [--press button@seconds[:hold] ...] [--no-host-folders]
 //
 // seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot(). --press
 // presses a Mini button (input.toml action name, e.g. "down@2.5") at that time for hold
@@ -58,6 +58,7 @@ int main(int argc, char** argv)
     const char* screenshotPath = nullptr;
     std::string sdRoot = DesktopFileSystem::defaultRoot();
     std::vector<ScriptedPress> presses;
+    bool hostFolders = true;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
@@ -71,6 +72,10 @@ int main(int argc, char** argv)
         else if (std::strcmp(argv[i], "--no-sd") == 0)
         {
             sdRoot.clear();
+        }
+        else if (std::strcmp(argv[i], "--no-host-folders") == 0)
+        {
+            hostFolders = false;
         }
         else if (std::strcmp(argv[i], "--press") == 0 && i + 1 < argc)
         {
@@ -93,6 +98,10 @@ int main(int argc, char** argv)
         }
     }
 
+    if (hostFolders)
+    {
+        platform.desktopFileSystem().addDefaultHostMounts();
+    }
     if (!platform.desktopFileSystem().setRoot(sdRoot))
     {
         std::fprintf(stderr, "meadowlark: cannot use %s as the SD card\n", sdRoot.c_str());

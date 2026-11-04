@@ -4,7 +4,7 @@
 //
 //   meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
 //              [--scale n] [--fullscreen] [--print-input-config]
-//              [--audio pipewire|sdl|none] [--audio-buffer frames]
+//              [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]
 //
 // Closing the window holds the power button, so core saves the project to the workspace and
 // powers off, as on the Mini. A second close quits at once.
@@ -64,13 +64,14 @@ struct Options
     int scale = 1;
     std::string audio = kDefaultAudio;
     int audioBuffer = 512; // frames, about 12 ms
+    bool hostFolders = true;
 };
 
 void printUsage()
 {
     std::printf("usage: meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]\n"
                 "                  [--scale n] [--fullscreen] [--print-input-config]\n"
-                "                  [--audio pipewire|sdl|none] [--audio-buffer frames]\n");
+                "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n");
 }
 
 class App
@@ -187,6 +188,8 @@ bool App::init()
                 SDL_GetCurrentVideoDriver(),
                 SDL_GetRendererName(renderer));
 
+    if (options.hostFolders)
+        platform.desktopFileSystem().addDefaultHostMounts();
     if (!platform.desktopFileSystem().setRoot(options.sdRoot))
     {
         std::fprintf(stderr, "meadowlark: cannot use %s as the SD card\n", options.sdRoot.c_str());
@@ -481,6 +484,8 @@ int main(int argc, char** argv)
             options.audio = argv[++i];
         else if (std::strcmp(arg, "--audio-buffer") == 0 && i + 1 < argc)
             options.audioBuffer = std::atoi(argv[++i]);
+        else if (std::strcmp(arg, "--no-host-folders") == 0)
+            options.hostFolders = false;
         else if (std::strcmp(arg, "--print-input-config") == 0)
         {
             std::fputs(input::defaultInputConfig(), stdout);

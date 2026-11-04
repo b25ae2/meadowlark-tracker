@@ -1,7 +1,7 @@
 // Tests for DesktopFileSystem: FatFs-like path and directory semantics, the SdDir listing
 // ports, and the made-up sector map used by sample streaming.
 //
-//   fs_test <scratch directory>      (the directory is deleted and recreated)
+//   fs_test <scratch directory>      (it and <scratch directory>-host are deleted and recreated)
 
 #include "DesktopFileSystem.h"
 
@@ -272,6 +272,75 @@ void testSectorMap(DesktopFileSystem& fs)
         fs.closeFile(file);
     }
 }
+bool hostFileExists(const std::string& path)
+{
+    FILE* file = std::fopen(path.c_str(), "rb");
+    if (file)
+        std::fclose(file);
+    return file != nullptr;
+}
+
+// Host folders shown in the card's root: browsable and readable, never writable, and never
+// reached by deleting card contents. Runs last: it empties the card.
+void testHostMounts(DesktopFileSystem& fs, const std::string& hostDir)
+{
+    std::system(("mkdir -p '" + hostDir + "/Sub' && printf 'tone' > '" + hostDir + "/Sub/One.wav'").c_str());
+    fs.addHostMount("Host", hostDir);
+    fs.addHostMount("Computer", "/");
+    fs.addHostMount("Missing", hostDir + "/nope"); // ignored: not a directory
+
+    char* list[64] = {};
+    int n = fs.createFilesList("/", 0, list, 64, 4000, FileSystem::enListFileFilter_folder);
+    std::vector<std::string> folders(list, list + n);
+    CHECK(std::count(folders.begin(), folders.end(), "/Host") == 1);
+    CHECK(std::count(folders.begin(), folders.end(), "/Computer") == 1);
+    CHECK(std::count(folders.begin(), folders.end(), "/Missing") == 0);
+    for (char*& item : list)
+    {
+        delete[] item;
+        item = nullptr;
+    }
+
+    // Browsing and reading, case-insensitively like the rest of the card.
+    CHECK(fs.exists("/Host") && fs.exists("/host/sub/one.WAV"));
+    CHECK(readWholeFile(fs, "/Host/Sub/One.wav") == "tone");
+    n = fs.createFilesList("/Host/Sub", 0, list, 64, 4000, FileSystem::enListFileFilter_wave);
+    CHECK(n == 1 && std::strcmp(list[0], "One.wav") == 0);
+    for (char*& item : list)
+    {
+        delete[] item;
+        item = nullptr;
+    }
+    const std::string viaComputer = "/Computer" + hostDir + "/Sub/One.wav";
+    CHECK(readWholeFile(fs, viaComputer.c_str()) == "tone");
+    CHECK(fs.getFileSize(viaComputer.c_str()) == 4);
+
+    // Read-only.
+    auto [opened, file] = fs.openFile("/Host/Sub/One.wav", FileSystem::kWriteOpen);
+    CHECK(!opened);
+    CHECK(!writeWholeFile(fs, "/Host/New.wav", "x", 1));
+    CHECK(!fs.mkdir(0, "/Host/Dir"));
+    CHECK(!fs.remove("/Host/Sub/One.wav"));
+    CHECK(!fs.rename("/Host/Sub/One.wav", "/Host/Sub/Two.wav"));
+    CHECK(!fs.rename("/Host/Sub/One.wav", "/Stolen.wav"));
+    CHECK(!fs.removeOnlyDirFiles("/Host"));
+    CHECK(!fs.removeDirWithFiles("/Host/Sub"));
+    CHECK(!fs.remove(viaComputer.c_str()));
+    CHECK(hostFileExists(hostDir + "/Sub/One.wav") && !hostFileExists(hostDir + "/New.wav"));
+
+    // Emptying the card leaves the mounts alone, and a symlink on the card is removed
+    // without touching what it points to.
+    std::system(("ln -s '" + hostDir + "' '" + fs.root() + "/Link'").c_str());
+    CHECK(fs.removeOnlyDirFiles("/"));
+    CHECK(hostFileExists(hostDir + "/Sub/One.wav"));
+    CHECK(fs.exists("/Host/Sub/One.wav") && !fs.exists("/Link"));
+
+    // A real folder of the same name takes precedence.
+    std::system(("mkdir '" + fs.root() + "/host'").c_str());
+    CHECK(!fs.exists("/Host/Sub"));
+    CHECK(writeWholeFile(fs, "/Host/Mine.wav", "m", 1));
+    CHECK(!hostFileExists(hostDir + "/Mine.wav"));
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -282,7 +351,8 @@ int main(int argc, char** argv)
         return 2;
     }
     const std::string root = argv[1];
-    std::system(("rm -rf '" + root + "'").c_str());
+    const std::string hostDir = root + "-host";
+    std::system(("rm -rf '" + root + "' '" + hostDir + "'").c_str());
 
     DesktopFileSystem fs;
     if (!fs.setRoot(root))
@@ -295,6 +365,7 @@ int main(int argc, char** argv)
     testFileHandles(fs);
     testHiddenAndLists(fs);
     testSectorMap(fs);
+    testHostMounts(fs, hostDir);
 
     if (failures == 0)
     {

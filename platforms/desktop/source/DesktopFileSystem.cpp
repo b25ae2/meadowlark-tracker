@@ -102,6 +102,25 @@ bool hasExtension(const std::string& name, const char* extension)
     return strncasecmp(name.c_str() + n - e, extension, e) == 0;
 }
 
+// Whether dir holds an entry whose name matches case-insensitively.
+bool hasEntryNamed(const std::string& dir, const std::string& name)
+{
+    bool found = false;
+    if (DIR* handle = ::opendir(dir.c_str()))
+    {
+        while (dirent* entry = ::readdir(handle))
+        {
+            if (strcasecmp(entry->d_name, name.c_str()) == 0)
+            {
+                found = true;
+                break;
+            }
+        }
+        ::closedir(handle);
+    }
+    return found;
+}
+
 bool isMacMetaFile(const std::string& name) { return name.size() >= 2 && name[0] == '.' && name[1] == '_'; }
 bool isMacMetaFolder(const std::string& name) { return name == "__MACOSX"; }
 } // namespace
@@ -147,8 +166,50 @@ bool DesktopFileSystem::setRoot(const std::string& path)
     return true;
 }
 
-bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mustExist) const
+void DesktopFileSystem::addHostMount(const std::string& name, const std::string& hostPath)
 {
+    if (name.empty() || name.find('/') != std::string::npos || !isDirectory(hostPath))
+    {
+        return;
+    }
+    std::string clean = hostPath;
+    while (clean.size() > 1 && clean.back() == '/')
+    {
+        clean.pop_back();
+    }
+    mounts.push_back({ name, clean });
+}
+
+void DesktopFileSystem::addDefaultHostMounts()
+{
+    if (const char* home = std::getenv("HOME"); home != nullptr && *home != 0)
+    {
+        addHostMount("Home", home);
+    }
+    addHostMount("Computer", "/");
+}
+
+bool DesktopFileSystem::resolveWritable(const char* path, std::string& hostPath, bool mustExist) const
+{
+    bool inMount = false;
+    if (!resolve(path, hostPath, mustExist, &inMount))
+    {
+        return false;
+    }
+    if (inMount)
+    {
+        FS_TRACE("write refused, read-only host folder: %s\n", path);
+        return false;
+    }
+    return true;
+}
+
+bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mustExist, bool* inMount) const
+{
+    if (inMount != nullptr)
+    {
+        *inMount = false;
+    }
     if (rootPath.empty() || path == nullptr)
     {
         return false;
@@ -184,7 +245,30 @@ bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mu
     }
 
     std::string current = rootPath;
-    for (size_t i = 0; i < parts.size(); i++)
+    size_t first = 0;
+    // A host mount, unless the card has a real entry of that name.
+    if (!parts.empty())
+    {
+        for (const Mount& mount : mounts)
+        {
+            if (strcasecmp(parts[0].c_str(), mount.name.c_str()) == 0 && !hasEntryNamed(rootPath, parts[0]))
+            {
+                current = mount.hostPath == "/" ? "" : mount.hostPath;
+                first = 1;
+                if (inMount != nullptr)
+                {
+                    *inMount = true;
+                }
+                break;
+            }
+        }
+    }
+    if (first == 1 && parts.size() == 1)
+    {
+        hostPath = current.empty() ? "/" : current;
+        return true;
+    }
+    for (size_t i = first; i < parts.size(); i++)
     {
         const bool last = i + 1 == parts.size();
         std::string candidate = current + "/" + parts[i];
@@ -192,7 +276,7 @@ bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mu
         {
             // FAT is case-insensitive: look for the same name in another case.
             bool found = false;
-            if (DIR* dir = ::opendir(current.c_str()))
+            if (DIR* dir = ::opendir(current.empty() ? "/" : current.c_str()))
             {
                 while (dirent* entry = ::readdir(dir))
                 {
@@ -258,6 +342,36 @@ bool DesktopFileSystem::readDirectory(const std::string& hostDir, std::vector<En
     return true;
 }
 
+bool DesktopFileSystem::readListing(const std::string& hostDir, std::vector<Entry>& entries) const
+{
+    if (!readDirectory(hostDir, entries))
+    {
+        return false;
+    }
+    if (hostDir != rootPath)
+    {
+        return true;
+    }
+    for (const Mount& mount : mounts)
+    {
+        const bool shadowed = std::any_of(entries.begin(), entries.end(), [&](const Entry& entry) {
+            return strcasecmp(entry.name.c_str(), mount.name.c_str()) == 0;
+        });
+        if (!shadowed)
+        {
+            Entry entry;
+            entry.name = mount.name;
+            entry.isDir = true;
+            entries.push_back(entry);
+        }
+    }
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+        const int c = strcasecmp(a.name.c_str(), b.name.c_str());
+        return c != 0 ? c < 0 : a.name < b.name;
+    });
+    return true;
+}
+
 void DesktopFileSystem::setHidden(const std::string& hostPath, bool hidden)
 {
     const std::string dir = parentOf(hostPath);
@@ -297,7 +411,7 @@ bool DesktopFileSystem::exists(const char* path)
 bool DesktopFileSystem::rename(const char* oldPath, const char* newPath)
 {
     std::string from, to;
-    if (!resolve(oldPath, from) || !resolve(newPath, to, false))
+    if (!resolveWritable(oldPath, from) || !resolveWritable(newPath, to, false))
     {
         return false;
     }
@@ -325,7 +439,7 @@ bool DesktopFileSystem::mkdir(uint8_t hidden, const char* path, bool)
 {
     std::string host;
     FS_TRACE("mkdir %s hidden %d\n", path, hidden);
-    if (!resolve(path, host, false))
+    if (!resolveWritable(path, host, false))
     {
         return false;
     }
@@ -344,7 +458,7 @@ bool DesktopFileSystem::remove(const char* path)
 {
     FS_TRACE("remove %s\n", path);
     std::string host;
-    if (!resolve(path, host) || host == rootPath)
+    if (!resolveWritable(path, host) || host == rootPath)
     {
         return false;
     }
@@ -373,7 +487,10 @@ bool DesktopFileSystem::deleteTree(const std::string& hostPath, bool removeSelf)
     for (const Entry& entry : entries)
     {
         const std::string child = hostPath + "/" + entry.name;
-        if (entry.isDir ? !deleteTree(child, true) : ::unlink(child.c_str()) != 0)
+        // A symlink goes, its target stays: never follow one out of the card.
+        struct stat link;
+        const bool isLink = ::lstat(child.c_str(), &link) == 0 && S_ISLNK(link.st_mode);
+        if (entry.isDir && !isLink ? !deleteTree(child, true) : ::unlink(child.c_str()) != 0)
         {
             return false;
         }
@@ -392,13 +509,13 @@ bool DesktopFileSystem::deleteTree(const std::string& hostPath, bool removeSelf)
 bool DesktopFileSystem::removeDirWithFiles(const char* path)
 {
     std::string host;
-    return resolve(path, host) && host != rootPath && isDirectory(host) && deleteTree(host, true);
+    return resolveWritable(path, host) && host != rootPath && isDirectory(host) && deleteTree(host, true);
 }
 
 bool DesktopFileSystem::removeOnlyDirFiles(const char* path)
 {
     std::string host;
-    return resolve(path, host) && isDirectory(host) && deleteTree(host, false);
+    return resolveWritable(path, host) && isDirectory(host) && deleteTree(host, false);
 }
 
 size_t DesktopFileSystem::getFileSize(const char* path)
@@ -471,7 +588,8 @@ std::tuple<bool, FileSystem::FileHandle> DesktopFileSystem::openFile(const char*
     };
 
     std::string host;
-    if (!resolve(filepath, host, openMode == kRead) || isDirectory(host))
+    const bool resolved = openMode == kRead ? resolve(filepath, host) : resolveWritable(filepath, host, false);
+    if (!resolved || isDirectory(host))
     {
         FS_TRACE("open %s mode %d: not found\n", filepath, static_cast<int>(openMode));
         return fail();
@@ -830,7 +948,7 @@ int DesktopFileSystem::createFilesList(const char* path,
 {
     std::string host;
     std::vector<Entry> entries;
-    if (!resolve(path, host) || !readDirectory(host, entries))
+    if (!resolve(path, host) || !readListing(host, entries))
     {
         return kListError;
     }
@@ -985,7 +1103,7 @@ int DesktopFileSystem::countContainedFiles(const char* path)
 {
     std::string host;
     std::vector<Entry> entries;
-    if (!resolve(path, host) || !readDirectory(host, entries))
+    if (!resolve(path, host) || !readListing(host, entries))
     {
         return 0;
     }

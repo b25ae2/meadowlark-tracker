@@ -180,6 +180,8 @@ void testResolver()
     CHECK(!parseAction("button", button));
     CHECK(!parseAction("nope", button));
     CHECK(parseAction("vol", button) && actionName(button) == "fx2");
+    CHECK(parseAction("screen1", button) && button == 0 && actionName(0) == "screen1");
+    CHECK(parseAction("Screen8", button) && button == 7);
 }
 
 // --- input names -----------------------------------------------------------------------
@@ -271,6 +273,8 @@ void testConfig(const std::string& dir)
     input::InputConfig config;
     CHECK(input::loadInputConfig("", config));
     CHECK(hasBinding(config, "play", { "key:Space" }));
+    CHECK(hasBinding(config, "screen1", { "key:F1" }) && hasBinding(config, "screen8", { "key:F8" }));
+    CHECK(hasBinding(config, "fn1", { "key:6" }));
     CHECK(hasBinding(config, "shift", { "key:Right Shift" }));
     CHECK(hasBinding(config, "quit", { "key:Left Ctrl", "key:Q" }));
     CHECK(bindingCount(config, "power") == 0);
@@ -308,6 +312,8 @@ void testConfig(const std::string& dir)
     std::fflush(stdout);
     CHECK(!input::loadInputConfig(path, config));
     CHECK(hasBinding(config, "play", { "key:Space" }));
+    CHECK(hasBinding(config, "screen1", { "key:F1" }) && hasBinding(config, "screen8", { "key:F8" }));
+    CHECK(hasBinding(config, "fn1", { "key:6" }));
 }
 } // namespace
 
