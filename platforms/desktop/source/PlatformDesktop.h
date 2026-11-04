@@ -230,6 +230,7 @@ class PlatformDesktop : public Platform
     CrcCalculator* getCrcCalculator() override { return &crc; }
     SystemInfo* getSystemInfo() override { return &systemInfo; }
     Usb* getUsb() override { return &usb; }
+    ExternalInstruments* getExternalInstruments() override { return externalInstruments; }
 
     DesktopButtons& desktopButtons() { return buttons; }
     DesktopCodec& desktopCodec() { return codec; }
@@ -242,6 +243,8 @@ class PlatformDesktop : public Platform
     // The MIDI ports (midi::kPortUsb, midi::kPortJack): incoming queue and outgoing sink.
     midi::PortIo& midiPort(int port) { return port == midi::kPortJack ? uartMidi.io() : usbMidi.io(); }
     DesktopTimer& desktopTimer() { return timer; }
+    // The plugin host, if the front end has one; set before core starts.
+    void setExternalInstruments(ExternalInstruments* instruments) { externalInstruments = instruments; }
 
   private:
     DesktopTimer timer;
@@ -262,6 +265,7 @@ class PlatformDesktop : public Platform
     SystemInfo systemInfo;
     StubUsb usb;
 
+    ExternalInstruments* externalInstruments = nullptr;
     PowerButtonCallback powerButtonCallback = nullptr;
     bool powerOff = false;
     bool powerButtonPressed = false;

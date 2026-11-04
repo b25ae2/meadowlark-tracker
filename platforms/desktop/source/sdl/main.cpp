@@ -1,7 +1,8 @@
 // Meadowlark with an SDL3 window: the software FT812's frames scaled into the window, and
 // keyboard, gamepad, joystick and mouse input mapped to the Tracker Mini's buttons through
 // input.toml. Sound goes to PipeWire on Linux and through SDL elsewhere; MIDI to the ALSA
-// sequencer or CoreMIDI, connected as midi.toml says.
+// sequencer or CoreMIDI, connected as midi.toml says. Instrument plugins (CLAP, LV2) from
+// plugins.toml play the MIDI instruments, their editors in windows of their own.
 //
 //   meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
 //              [--scale n] [--fullscreen] [--print-input-config]
@@ -9,6 +10,7 @@
 //              [--audio-input auto|always|off]
 //              [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]
 //              [--font-config file] [--print-font-config]
+//              [--plugin-config file] [--no-plugins] [--list-plugins] [--print-plugin-config]
 //
 // Closing the window holds the power button, so core saves the project to the workspace and
 // powers off, as on the Mini. A second close quits at once.
@@ -31,6 +33,10 @@
 #include "midi/MidiBackend.h"
 #include "midi/MidiConfig.h"
 #include "midi/MidiScheduler.h"
+#include "mtStructs.h"
+#include "plugins/EditorWindows.h"
+#include "plugins/PluginConfig.h"
+#include "plugins/PluginHost.h"
 
 #ifdef MEADOWLARK_HAVE_PIPEWIRE
 #include "audio/PipeWireInput.h"
@@ -52,6 +58,8 @@
 
 // hardware.cpp: the firmware's own output mute (startup, power-off).
 uint8_t isAudioOutMuted();
+// mtSequencer.cpp: an instrument's MIDI channel, kNoChannel (-1) for a sample instrument.
+int instrumentIdxToMidiChannel(int instrument);
 
 namespace
 {
@@ -59,6 +67,8 @@ constexpr int kAudioBlockSamples = 128;
 constexpr double kSampleRate = 44100.0;
 // Core gets this long to finish the power-off sequence after the window is closed.
 constexpr uint64_t kQuitTimeoutMs = 6000;
+// How often plugins get their main-thread work (timers, editors).
+constexpr uint64_t kPluginIdleMs = 10;
 
 PlatformDesktop platform;
 
@@ -83,6 +93,8 @@ struct Options
     std::string midiConfig = midi::defaultMidiConfigPath();
     bool midi = true;
     std::string fontConfig = fonts::defaultFontConfigPath();
+    std::string pluginConfig = plugins::defaultPluginConfigPath();
+    bool plugins = true;
 };
 
 void printUsage()
@@ -92,7 +104,8 @@ void printUsage()
                 "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n"
                 "                  [--audio-input auto|always|off]\n"
                 "                  [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]\n"
-                "                  [--font-config file] [--print-font-config]\n");
+                "                  [--font-config file] [--print-font-config]\n"
+                "                  [--plugin-config file] [--no-plugins] [--list-plugins] [--print-plugin-config]\n");
 }
 
 class App
@@ -119,6 +132,7 @@ class App
     void stopMidi();
     void renderAudioBlock(int16_t* left, int16_t* right, int frames);
     void renderAudioInline();
+    void togglePluginEditor();
 
     Options options;
     input::InputResolver resolver;
@@ -138,6 +152,10 @@ class App
     std::unique_ptr<midi::MidiConnector> midiConnector;
     midi::MidiScheduler midiScheduler;
     uint64_t nextMidiScan = 0;
+
+    plugins::PluginHost pluginHost;
+    plugins::EditorWindows editorWindows;
+    uint64_t nextPluginIdle = 0;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -159,6 +177,8 @@ App::~App()
     // Audio first: the render thread sends MIDI.
     stopAudio();
     stopMidi();
+    // Editors before their plugins, which go with the host.
+    editorWindows.closeAll();
     if (texture)
         SDL_DestroyTexture(texture);
     if (renderer)
@@ -244,6 +264,18 @@ bool App::init()
     fonts::FontConfig fontConfig;
     fonts::loadFontConfig(options.fontConfig, fontConfig);
     fonts::installFonts(fontConfig, userCachePath("fonts"), platform.desktopFileSystem());
+
+    // Before core starts: its audio engine takes the instruments when it starts.
+    if (options.plugins)
+    {
+        plugins::PluginConfig pluginConfig;
+        plugins::loadPluginConfig(options.pluginConfig, pluginConfig);
+        if (pluginHost.load(pluginConfig) > 0)
+        {
+            pluginHost.setCardRoot(platform.desktopFileSystem().root());
+            platform.setExternalInstruments(&pluginHost);
+        }
+    }
 
     tracker = Tracker::getInstance();
     tracker->getStartDisplayFunc()(&platform);
@@ -474,6 +506,12 @@ void App::run()
             midiConnector->update();
             nextMidiScan = SDL_GetTicks() + 1000;
         }
+        if (pluginHost.size() > 0 && SDL_GetTicks() >= nextPluginIdle)
+        {
+            pluginHost.idle();
+            editorWindows.idle();
+            nextPluginIdle = SDL_GetTicks() + kPluginIdleMs;
+        }
         platform.desktopButtons().update();
         tracker->update();
 
@@ -497,6 +535,8 @@ void App::run()
 
 void App::handleEvent(const SDL_Event& event)
 {
+    if (editorWindows.handleEvent(event))
+        return;
     switch (event.type)
     {
         case SDL_EVENT_QUIT:
@@ -577,6 +617,10 @@ void App::handleAction(input::ActionId action, bool pressed)
             if (pressed)
                 requestQuit();
             break;
+        case input::kActionPluginEditor:
+            if (pressed)
+                togglePluginEditor();
+            break;
         default:
             break;
     }
@@ -593,6 +637,22 @@ void App::requestQuit()
     quitDeadline = SDL_GetTicks() + kQuitTimeoutMs;
     std::printf("meadowlark: saving and powering off (close again to quit at once)\n");
     platform.setPowerButton(true);
+}
+
+// The editor of the plugin that the selected instrument plays.
+void App::togglePluginEditor()
+{
+    const int channel = instrumentIdxToMidiChannel(mtProject.values.lastUsedInstrument);
+    plugins::Plugin* plugin = channel > 0 ? pluginHost.pluginOnChannel(channel) : nullptr;
+    if (!plugin)
+    {
+        if (channel > 0)
+            std::printf("meadowlark: no plugin on MIDI channel %d (plugins.toml)\n", channel);
+        else
+            std::printf("meadowlark: select a MIDI instrument for its plugin editor\n");
+        return;
+    }
+    editorWindows.toggle(*plugin);
 }
 
 void App::toggleFullscreen()
@@ -695,6 +755,31 @@ int main(int argc, char** argv)
             options.midi = false;
         else if (std::strcmp(arg, "--font-config") == 0 && i + 1 < argc)
             options.fontConfig = argv[++i];
+        else if (std::strcmp(arg, "--plugin-config") == 0 && i + 1 < argc)
+            options.pluginConfig = argv[++i];
+        else if (std::strcmp(arg, "--no-plugins") == 0)
+            options.plugins = false;
+        else if (std::strcmp(arg, "--print-plugin-config") == 0)
+        {
+            std::fputs(plugins::defaultPluginConfig(), stdout);
+            return 0;
+        }
+        else if (std::strcmp(arg, "--list-plugins") == 0)
+        {
+            std::vector<plugins::Found> found = plugins::findClapPlugins();
+            for (const plugins::Found& lv2 : plugins::findLv2Plugins())
+                found.push_back(lv2);
+            if (found.empty())
+                std::printf("no instrument plugins found\n");
+            for (const plugins::Found& plugin : found)
+            {
+                if (plugin.format == "clap")
+                    std::printf("%s\n  clap = \"%s\"\n  id = \"%s\"\n", plugin.name.c_str(), plugin.location.c_str(), plugin.id.c_str());
+                else
+                    std::printf("%s\n  lv2 = \"%s\"\n", plugin.name.c_str(), plugin.location.c_str());
+            }
+            return 0;
+        }
         else if (std::strcmp(arg, "--print-font-config") == 0)
         {
             std::fputs(fonts::defaultFontConfig(), stdout);

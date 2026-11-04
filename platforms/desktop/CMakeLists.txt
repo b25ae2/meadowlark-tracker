@@ -182,9 +182,30 @@ if(MEADOWLARK_SDL)
   target_link_libraries(meadowlark_fonts PUBLIC meadowlark_core Freetype::Freetype)
   target_compile_options(meadowlark_fonts PRIVATE -Wall -Wextra)
 
+  # Plugins: CLAP and LV2 (lilv) instruments, played by the MIDI instruments, plugins.toml,
+  # and the windows for their editors (X11 on Linux, SDL/Cocoa on macOS).
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(LILV REQUIRED IMPORTED_TARGET lilv-0)
+  add_library(meadowlark_plugins STATIC
+    source/plugins/ClapPlugin.cpp
+    source/plugins/EditorWindows.cpp
+    source/plugins/Lv2Plugin.cpp
+    source/plugins/PluginConfig.cpp
+    source/plugins/PluginHost.cpp)
+  target_include_directories(meadowlark_plugins PUBLIC source)
+  target_include_directories(meadowlark_plugins SYSTEM PRIVATE ${TOMLPP_INCLUDE_DIR} ${ROOT_DIR}/util/3rdparty/clap)
+  target_compile_definitions(meadowlark_plugins PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
+  target_link_libraries(meadowlark_plugins PUBLIC meadowlark_core SDL3::SDL3 PkgConfig::LILV ${CMAKE_DL_LIBS} Threads::Threads)
+  target_compile_options(meadowlark_plugins PRIVATE -Wall -Wextra)
+  if(NOT APPLE)
+    find_package(X11 REQUIRED)
+    target_link_libraries(meadowlark_plugins PUBLIC X11::X11)
+  endif()
+
   # The application: SDL3 window, input and sound.
   add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp source/audio/SdlAudioInput.cpp)
-  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input meadowlark_midi meadowlark_fonts)
+  target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input meadowlark_midi meadowlark_fonts
+    meadowlark_plugins)
   target_compile_options(meadowlark PRIVATE -Wall -Wextra)
   set_target_properties(meadowlark PROPERTIES ENABLE_EXPORTS ON)
 
@@ -220,9 +241,38 @@ if(MEADOWLARK_SDL)
   add_executable(font_test tests/font_test.cpp)
   target_link_libraries(font_test PRIVATE meadowlark_platform meadowlark_fonts)
 
+  # Plugin loading, MIDI, rendering, state and plugins.toml, with the test plugins below.
+  add_executable(plugin_test tests/plugin_test.cpp)
+  target_link_libraries(plugin_test PRIVATE meadowlark_platform meadowlark_plugins)
+  # Sine synths in both formats for plugin_test: a .clap and an LV2 bundle in the build tree.
+  add_library(test_synth_clap MODULE tests/plugins/test_synth_clap.c)
+  target_include_directories(test_synth_clap SYSTEM PRIVATE ${ROOT_DIR}/util/3rdparty/clap)
+  set_target_properties(test_synth_clap PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME meadowlark-test-synth)
+  add_library(test_synth_lv2 MODULE tests/plugins/test_synth_lv2.c)
+  target_include_directories(test_synth_lv2 PRIVATE ${LILV_INCLUDE_DIRS})
+  set_target_properties(test_synth_lv2 PROPERTIES PREFIX "" OUTPUT_NAME test-synth
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lv2/meadowlark-test-synth.lv2)
+  configure_file(tests/plugins/manifest.ttl.in
+    ${CMAKE_CURRENT_BINARY_DIR}/lv2/meadowlark-test-synth.lv2/manifest.ttl)
+  configure_file(tests/plugins/test-synth.ttl
+    ${CMAKE_CURRENT_BINARY_DIR}/lv2/meadowlark-test-synth.lv2/test-synth.ttl COPYONLY)
+  add_dependencies(plugin_test test_synth_clap test_synth_lv2)
+  target_compile_definitions(plugin_test PRIVATE TEST_CLAP_FILE="$<TARGET_FILE:test_synth_clap>"
+    TEST_LV2_DIR="${CMAKE_CURRENT_BINARY_DIR}/lv2")
+  if(NOT APPLE)
+    target_link_libraries(test_synth_clap PRIVATE m)
+    target_link_libraries(test_synth_lv2 PRIVATE m)
+  endif()
+
   # Button timing, bindings and input.toml; takes a scratch directory.
   add_executable(input_test tests/input_test.cpp)
   target_link_libraries(input_test PRIVATE meadowlark_platform meadowlark_input)
+endif()
+
+# The headless runner loads plugins (--plugin) when the plugin host is built.
+if(TARGET meadowlark_plugins)
+  target_link_libraries(meadowlark-headless PRIVATE meadowlark_plugins)
+  target_compile_definitions(meadowlark-headless PRIVATE MEADOWLARK_HAVE_PLUGINS)
 endif()
 
 # --- tests ---------------------------------------------------------------------------------

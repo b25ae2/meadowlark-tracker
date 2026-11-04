@@ -4,14 +4,17 @@
 //
 //   meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
 //                       [--press button@seconds[:hold] ...] [--no-host-folders] [--midi-trace]
-//                       [--ptfont file]
+//                       [--ptfont file] [--plugin clap:file[#id]@channel | lv2:uri@channel ...]
+//                       [--note channel@seconds[:hold] ...]
 //
 // seconds defaults to 3; the SD card root to DesktopFileSystem::defaultRoot(). --press
 // presses a Mini button (input.toml action name, e.g. "down@2.5") at that time for hold
 // seconds (default 0.1), through the same path as the window's input. --midi-trace turns
 // on MIDI clock, transport and note output on both ports (after 1 s, once core has read its
 // config) and prints what core sends. --ptfont puts a font file in the card's /Fonts and
-// switches the display to it at 1 s, as choosing it in Config would.
+// switches the display to it at 1 s, as choosing it in Config would. --plugin loads an
+// instrument plugin (built with the SDL front end), and --note sends core's MIDI-instrument
+// note (middle C, full velocity) on a channel, as the sequencer would.
 
 #include "AudioLock.h"
 #include "CrashHandler.h"
@@ -22,6 +25,9 @@
 #include "input/Actions.h"
 #include "mtMidi.h"
 #include "mtStructs.h"
+#ifdef MEADOWLARK_HAVE_PLUGINS
+#include "plugins/PluginHost.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -47,6 +53,15 @@ struct ScriptedPress
     double hold;
     bool pressed = false;
     bool released = false;
+};
+
+struct ScriptedNote
+{
+    int channel;
+    double at;
+    double hold;
+    bool on = false;
+    bool off = false;
 };
 
 // Prints outgoing MIDI with the audio block it was sent in and its offset into the block.
@@ -102,6 +117,11 @@ int main(int argc, char** argv)
     bool hostFolders = true;
     bool midiTrace = false;
     std::string ptFont;
+    std::vector<ScriptedNote> notes;
+#ifdef MEADOWLARK_HAVE_PLUGINS
+    plugins::PluginHost pluginHost;
+    std::vector<plugins::SlotConfig> pluginSlots;
+#endif
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc)
@@ -128,6 +148,44 @@ int main(int argc, char** argv)
         {
             ptFont = argv[++i];
         }
+        else if (std::strcmp(argv[i], "--note") == 0 && i + 1 < argc)
+        {
+            const std::string spec = argv[++i];
+            const size_t at = spec.find('@');
+            const int channel = std::atoi(spec.c_str());
+            if (at == std::string::npos || channel < 1 || channel > 16)
+            {
+                std::fprintf(stderr, "meadowlark: --note wants <channel>@<seconds>[:hold], got %s\n", spec.c_str());
+                return 2;
+            }
+            const size_t colon = spec.find(':', at);
+            const double hold = colon == std::string::npos ? 0.5 : std::atof(spec.c_str() + colon + 1);
+            notes.push_back({ channel, std::atof(spec.c_str() + at + 1), hold });
+        }
+#ifdef MEADOWLARK_HAVE_PLUGINS
+        else if (std::strcmp(argv[i], "--plugin") == 0 && i + 1 < argc)
+        {
+            const std::string spec = argv[++i];
+            const size_t colon = spec.find(':');
+            const size_t at = spec.rfind('@');
+            plugins::SlotConfig slot;
+            slot.format = spec.substr(0, colon);
+            if (colon == std::string::npos || at == std::string::npos || at < colon ||
+                (slot.format != "clap" && slot.format != "lv2"))
+            {
+                std::fprintf(stderr, "meadowlark: --plugin wants clap:file[#id]@channel or lv2:uri@channel\n");
+                return 2;
+            }
+            slot.location = spec.substr(colon + 1, at - colon - 1);
+            if (slot.format == "clap" && slot.location.find('#') != std::string::npos)
+            {
+                slot.id = slot.location.substr(slot.location.find('#') + 1);
+                slot.location.resize(slot.location.find('#'));
+            }
+            slot.channel = std::atoi(spec.c_str() + at + 1);
+            pluginSlots.push_back(slot);
+        }
+#endif
         else if (std::strcmp(argv[i], "--press") == 0 && i + 1 < argc)
         {
             std::string spec = argv[++i];
@@ -167,6 +225,23 @@ int main(int argc, char** argv)
         ptFontName = ptFontName.substr(0, ptFontName.rfind('.'));
     }
     bool fontApplied = ptFont.empty();
+
+#ifdef MEADOWLARK_HAVE_PLUGINS
+    for (const plugins::SlotConfig& slot : pluginSlots)
+    {
+        std::string error;
+        if (!pluginHost.add(slot, error))
+        {
+            std::fprintf(stderr, "meadowlark: plugin: %s\n", error.c_str());
+            return 1;
+        }
+    }
+    if (pluginHost.size() > 0)
+    {
+        pluginHost.setCardRoot(platform.desktopFileSystem().root());
+        platform.setExternalInstruments(&pluginHost);
+    }
+#endif
 
     Tracker* tracker = Tracker::getInstance();
 
@@ -225,6 +300,23 @@ int main(int argc, char** argv)
             }
         }
         platform.desktopButtons().update();
+
+        for (ScriptedNote& note : notes)
+        {
+            if (!note.on && elapsed >= note.at)
+            {
+                note.on = true;
+                sendMidiNoteOn(60, 127, static_cast<uint8_t>(note.channel), false);
+            }
+            else if (note.on && !note.off && elapsed >= note.at + note.hold)
+            {
+                note.off = true;
+                sendMidiNoteOff(60, 0, static_cast<uint8_t>(note.channel), false);
+            }
+        }
+#ifdef MEADOWLARK_HAVE_PLUGINS
+        pluginHost.idle();
+#endif
 
         if (!fontApplied && elapsed >= 1.0)
         {

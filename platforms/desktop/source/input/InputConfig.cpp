@@ -41,7 +41,8 @@ constexpr char kDefaultConfig[] = R"toml(# Meadowlark input bindings.
 #   note instr fx1 fx2 (= vol) pattern menu middle fn1 fn2 fn3 fn4 plus10 plus1 minus1 minus10
 #   button0 ... button43 (any interface button by index)
 # and the desktop ones: paste (Shift + Copy, as the Mini pastes), power (hold to save and
-# quit), fullscreen, screenshot, quit.
+# quit), plugin_editor (the plugin editor of the selected MIDI instrument, plugins.toml),
+# fullscreen, screenshot, quit.
 #
 # A file only needs the actions it changes; the others keep these defaults unless
 # options.defaults is false. An empty list unbinds an action.
@@ -106,6 +107,7 @@ minus1  = ["key:O"]
 plus1   = ["key:P"]
 
 power      = []
+plugin_editor = ["key:F10"]
 fullscreen = ["key:F11"]
 screenshot = ["key:F12"]
 quit       = [["key:Left Ctrl", "key:Q"]]

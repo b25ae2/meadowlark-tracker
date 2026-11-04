@@ -12,12 +12,10 @@ set -euo pipefail
 # Compiler and build tools for the desktop build.
 BASE_PKGS=(build-essential clang git cmake ninja-build pkg-config libsdl3-dev
            libtomlplusplus-dev libpipewire-0.3-dev libasound2-dev
-           libfreetype-dev)
+           libfreetype-dev liblilv-dev lv2-dev libx11-dev)
 
-# Phase 2-9: display, audio, input, MIDI, fonts, config, plugin hosting.
-PLANNED_PKGS=(
-  liblilv-dev           # LV2 hosting
-)
+# Later port phases (packaging); nothing yet.
+PLANNED_PKGS=()
 
 usage() {
   sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'

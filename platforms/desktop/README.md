@@ -6,9 +6,10 @@ secondary. The firmware build (`make` at the repository root) is separate and un
 
 ## Dependencies
 
-- Debian/Ubuntu: `tools/install-deps-linux.sh` (add `--planned` for the libraries later
-  phases will need).
-- macOS: `brew install cmake ninja sdl3 tomlplusplus freetype`.
+- Debian/Ubuntu: `tools/install-deps-linux.sh`.
+- macOS: `brew install cmake ninja sdl3 tomlplusplus freetype lilv`.
+
+The CLAP headers are in `util/3rdparty/clap`.
 
 With `-DMEADOWLARK_SDL=OFF` neither SDL3 nor toml++ is needed, and on Linux
 `-DMEADOWLARK_PIPEWIRE=OFF` drops the PipeWire dependency (sound then goes through SDL).
@@ -44,6 +45,8 @@ platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config fil
                                    [--audio-input auto|always|off] [--no-host-folders]
                                    [--midi-config file] [--no-midi] [--list-midi]
                                    [--print-midi-config] [--font-config file] [--print-font-config]
+                                   [--plugin-config file] [--no-plugins] [--list-plugins]
+                                   [--print-plugin-config]
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
@@ -72,7 +75,8 @@ workspace and powers off (about 1.5 s); closing it again quits at once.
 ```sh
 platforms/desktop/build/meadowlark-headless [seconds] [--screenshot out.png] [--sd-root dir | --no-sd]
                                             [--press button@seconds[:hold] ...] [--midi-trace]
-                                            [--ptfont file]
+                                            [--ptfont file] [--plugin clap:file[#id]@channel ...]
+                                            [--plugin lv2:uri@channel ...] [--note channel@seconds[:hold] ...]
 ```
 
 Runs the core for the given time (default 3 s) without a window or sound device, prints
@@ -82,6 +86,8 @@ how many audio blocks and display lists it produced, and can save the last frame
 window's input, for scripted checks. `--midi-trace` turns on MIDI clock, transport and
 note output and prints every message core sends, with its audio block and offset.
 `--ptfont` adds a font file to the card's `/Fonts` and switches the display to it.
+`--plugin` loads an instrument plugin on a MIDI channel and `--note 1@2` sends core's
+MIDI-instrument note (middle C, 0.5 s) on channel 1 at 2 s; the peak shows it played.
 
 ## Input
 
@@ -167,6 +173,39 @@ font with larger letters than the built-in Roboto Mono may not fit everywhere; s
 sizes help, and very large ones are refused (the firmware's limit is about 22 KB per size).
 The bold 17 size keeps the built-in transport icons.
 
+## Plugins
+
+CLAP and LV2 instruments can be played by the tracker's MIDI instruments. `plugins.toml`,
+next to `input.toml` (or `--plugin-config <file>`, `MEADOWLARK_PLUGIN_CONFIG`), lists them,
+each on a MIDI channel:
+
+```toml
+[[plugin]]
+clap = "~/.clap/Dexed.clap"
+channel = 1
+reverb_send = 0.2     # also volume_db, pan, delay_send
+
+[[plugin]]
+lv2 = "http://drobilla.net/plugins/mda/EPiano"
+channel = 2
+```
+
+A plugin hears everything the tracker sends to the MIDI instrument on its channel (notes,
+CC, program change, pitch bend, aftertouch), whatever Config's MIDI out is set to, and also
+while a song or pattern is exported. Its sound joins the tracks in the master mix, with
+optional sends into the delay and reverb. `meadowlark --list-plugins` prints the installed
+instruments in the file's format: CLAP from `$CLAP_PATH`, `~/.clap` and `/usr/lib/clap`
+(`~/Library/Audio/Plug-Ins/CLAP` and `/Library/Audio/Plug-Ins/CLAP` on macOS), LV2 from
+`$LV2_PATH` or the standard places. `--print-plugin-config` prints the format.
+
+The `plugin_editor` action (F10) opens or closes the editor of the plugin on the selected
+instrument's channel in a window of its own. On Linux these are X11 windows (shown through
+XWayland under a Wayland session); LV2 editors must be X11 (macOS: Cocoa) ones, as GTK or
+Qt editors would need suil. Saving the project to the workspace saves each plugin's state in
+`Workspace/Plugins/channel-NN.state`, and the `Plugins` folder goes with the project when it
+is saved or opened. A project without a saved state for a plugin leaves the plugin as it
+is.
+
 ## SD card
 
 A host directory stands in for the SD card:
@@ -198,6 +237,7 @@ platforms/desktop/build/audio_test [pipewire|sdl] # sound output runs in real ti
                                                   # underruns; silent unless --tone
 platforms/desktop/build/midi_test /tmp/midi      # MIDI ports, output timing, midi.toml
 platforms/desktop/build/font_test /tmp/fonts some.ttf # .ptfont generation, fonts.toml, /Fonts
+platforms/desktop/build/plugin_test /tmp/plugins # plugin host with the test synths in the build
 platforms/desktop/build/midi_test /tmp/midi --loopback # also through the system's MIDI
 platforms/desktop/build/audio_test pipewire --capture # also records the output's monitor and
                                                       # checks a quiet tone comes back

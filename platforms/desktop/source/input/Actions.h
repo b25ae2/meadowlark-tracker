@@ -20,6 +20,7 @@ enum : ActionId
     kActionScreenshot,
     kActionQuit, // same as closing the window
     kActionPaste, // Shift + Copy, which is how the Mini pastes
+    kActionPluginEditor, // the selected MIDI instrument's plugin editor, open or closed
     kActionEnd
 };
 
