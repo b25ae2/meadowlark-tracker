@@ -204,7 +204,8 @@ void cFileManager::listOnlyFolderNames()
         case fmBrowseFirmwares: folderSizeFilter = FileSystem::enListFileFilter_firmware; break;
     }
 
-    allFoldersNum = fileSystem->createFilesList(explorerCurrentPath,
+    // A folder that cannot be opened (kListError) lists as empty.
+    const int listedFolders = fileSystem->createFilesList(explorerCurrentPath,
                                                 parentFolder,
                                                 explorerList,
                                                 list_length_max,
@@ -213,6 +214,7 @@ void cFileManager::listOnlyFolderNames()
                                                 0,
                                                 list_length_max - 1,
                                                 folderSizeFilter);
+    allFoldersNum = listedFolders < 0 ? parentFolder : listedFolders;
 
     explorerFolderCount = allFoldersNum - parentFolder;
 
@@ -248,7 +250,7 @@ void cFileManager::listOnlyWavFromActualPath()
 
     if (listWavStage == 0) // stage 0
     {
-        uint8_t filesFound =
+        int filesFound =
           fileSystem->createFilesList(explorerCurrentPath,
                                       0,
                                       explorerList + explorerListLength,

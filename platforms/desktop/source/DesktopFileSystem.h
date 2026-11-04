@@ -6,11 +6,13 @@
 // - names are matched case-insensitively, like FAT; new names keep the case given;
 // - paths are relative to the card root with or without a leading '/';
 // - mkdir creates one level and succeeds if it exists, remove only deletes files and empty
-//   directories, rename fails if the target exists;
+//   directories, rename fails if the target exists; trailing spaces and dots in a name
+//   are ignored;
 // - the FAT "hidden" attribute is kept in a ".hidden" file per directory (the GNOME file
 //   manager convention), and dot files count as hidden;
 // - listing functions are ports of SdDir's, including their limits. Entries are returned in
-//   case-insensitive name order, where FatFs returns directory order.
+//   natural, case-insensitive name order ("2" before "10"), where FatFs returns
+//   directory order.
 //
 // Sample streaming reads raw sectors through the cluster map from enableFastSeek. Each file
 // gets one contiguous run of made-up clusters, and readSectorsAsync maps sectors back to the

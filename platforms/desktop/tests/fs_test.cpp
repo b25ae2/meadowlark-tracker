@@ -164,6 +164,33 @@ void testHiddenAndLists(DesktopFileSystem& fs)
         sawRange2 |= std::strcmp(list[i], "/Drums (3-4)") == 0;
     }
     CHECK(sawRange1 && sawRange2);
+    // The firmware opens a range as "<name> " (parseFolderName keeps the space before the
+    // parenthesis); FAT drops trailing spaces and dots, so that is the folder itself.
+    CHECK(fs.exists("/Samples/Drums ") && fs.exists("/Samples/Drums./1.wav") && fs.exists("/samples /drums /1.WAV"));
+    CHECK(fs.createFilesList("/Samples/Drums ", 0, list + 8, 8, 2000, FileSystem::enListFileFilter_wave) == 3);
+    for (int i = 8; i < 16; i++)
+    {
+        delete[] list[i];
+        list[i] = nullptr;
+    }
+    CHECK(!fs.exists("/Samples/ "));
+
+    // Natural order, so numbered samples list (and split into ranges) as 1, 2, ... 10.
+    CHECK(fs.mkdir(0, "/Numbered"));
+    for (const char* name : { "/Numbered/hit 10.wav", "/Numbered/Hit 2.wav", "/Numbered/hit 1.wav", "/Numbered/hit 007.wav" })
+    {
+        CHECK(writeWholeFile(fs, name, "x", 1));
+    }
+    n = fs.createFilesList("/Numbered", 0, list + 8, 8, 2000, FileSystem::enListFileFilter_wave);
+    CHECK(n == 4);
+    CHECK(n == 4 && std::strcmp(list[8], "hit 1.wav") == 0 && std::strcmp(list[9], "Hit 2.wav") == 0 &&
+          std::strcmp(list[10], "hit 007.wav") == 0 && std::strcmp(list[11], "hit 10.wav") == 0);
+    for (int i = 8; i < 16; i++)
+    {
+        delete[] list[i];
+        list[i] = nullptr;
+    }
+    CHECK(fs.removeDirWithFiles("/Numbered"));
     for (char*& item : list)
     {
         delete[] item;

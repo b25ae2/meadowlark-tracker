@@ -102,6 +102,60 @@ bool hasExtension(const std::string& name, const char* extension)
     return strncasecmp(name.c_str() + n - e, extension, e) == 0;
 }
 
+// FatFs drops trailing spaces and dots from each name in a path ("Kicks " opens "Kicks"),
+// and the firmware relies on it: folder ranges like "/Kicks (1-100)" are opened as "Kicks ".
+std::string fatName(const std::string& name)
+{
+    size_t end = name.size();
+    while (end > 0 && (name[end - 1] == ' ' || name[end - 1] == '.'))
+    {
+        end--;
+    }
+    return name.substr(0, end);
+}
+
+// Natural order, case-insensitive: "hit 2" before "hit 10". Directory order on FAT is the
+// order files were written; this is what that usually looks like, and it keeps the
+// firmware's numbered folder ranges ("/Kicks (1-100)") holding files 1 to 100.
+bool naturalLess(const std::string& a, const std::string& b)
+{
+    size_t i = 0, j = 0;
+    while (i < a.size() && j < b.size())
+    {
+        const auto ca = static_cast<unsigned char>(a[i]);
+        const auto cb = static_cast<unsigned char>(b[j]);
+        if (std::isdigit(ca) && std::isdigit(cb))
+        {
+            size_t ei = i, ej = j;
+            while (ei < a.size() && std::isdigit(static_cast<unsigned char>(a[ei])))
+                ei++;
+            while (ej < b.size() && std::isdigit(static_cast<unsigned char>(b[ej])))
+                ej++;
+            size_t si = i, sj = j; // skip leading zeros
+            while (si + 1 < ei && a[si] == '0')
+                si++;
+            while (sj + 1 < ej && b[sj] == '0')
+                sj++;
+            if (ei - si != ej - sj)
+                return ei - si < ej - sj;
+            const int c = a.compare(si, ei - si, b, sj, ej - sj);
+            if (c != 0)
+                return c < 0;
+            i = ei;
+            j = ej;
+            continue;
+        }
+        const int la = std::tolower(ca), lb = std::tolower(cb);
+        if (la != lb)
+            return la < lb;
+        i++;
+        j++;
+    }
+    if (a.size() - i != b.size() - j)
+        return a.size() - i < b.size() - j;
+    return a < b; // a strict order even for names differing only in case or zeros
+}
+
 // Whether dir holds an entry whose name matches case-insensitively.
 bool hasEntryNamed(const std::string& dir, const std::string& name)
 {
@@ -239,6 +293,11 @@ bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mu
             }
             else if (part != ".")
             {
+                part = fatName(part);
+                if (part.empty())
+                {
+                    return false; // all spaces or dots: FR_INVALID_NAME
+                }
                 parts.push_back(part);
             }
         }
@@ -274,13 +333,14 @@ bool DesktopFileSystem::resolve(const char* path, std::string& hostPath, bool mu
         std::string candidate = current + "/" + parts[i];
         if (!pathExists(candidate))
         {
-            // FAT is case-insensitive: look for the same name in another case.
+            // FAT is case-insensitive and ignores trailing spaces and dots: look for the name
+            // spelled another way (host files may really end in a space or dot).
             bool found = false;
             if (DIR* dir = ::opendir(current.empty() ? "/" : current.c_str()))
             {
                 while (dirent* entry = ::readdir(dir))
                 {
-                    if (strcasecmp(entry->d_name, parts[i].c_str()) == 0)
+                    if (strcasecmp(fatName(entry->d_name).c_str(), parts[i].c_str()) == 0)
                     {
                         candidate = current + "/" + entry->d_name;
                         found = true;
@@ -335,10 +395,7 @@ bool DesktopFileSystem::readDirectory(const std::string& hostDir, std::vector<En
     }
     ::closedir(dir);
 
-    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
-        const int c = strcasecmp(a.name.c_str(), b.name.c_str());
-        return c != 0 ? c < 0 : a.name < b.name;
-    });
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return naturalLess(a.name, b.name); });
     return true;
 }
 
@@ -365,10 +422,7 @@ bool DesktopFileSystem::readListing(const std::string& hostDir, std::vector<Entr
             entries.push_back(entry);
         }
     }
-    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
-        const int c = strcasecmp(a.name.c_str(), b.name.c_str());
-        return c != 0 ? c < 0 : a.name < b.name;
-    });
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return naturalLess(a.name, b.name); });
     return true;
 }
 
@@ -950,6 +1004,7 @@ int DesktopFileSystem::createFilesList(const char* path,
     std::vector<Entry> entries;
     if (!resolve(path, host) || !readListing(host, entries))
     {
+        FS_TRACE("list %s: cannot open\n", path);
         return kListError;
     }
 
