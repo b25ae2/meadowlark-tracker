@@ -40,7 +40,8 @@ Apple clang 15 on macOS 26; UBSan works on both.
 
 ```sh
 platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
-                                   [--scale n] [--fullscreen] [--print-input-config]
+                                   [--scale n] [--scale-mode sharp|nearest|smooth|integer]
+                                   [--fullscreen] [--print-input-config]
                                    [--audio pipewire|sdl|none] [--audio-buffer frames]
                                    [--audio-input auto|always|off] [--no-host-folders]
                                    [--midi-config file] [--no-midi] [--list-midi]
@@ -50,7 +51,16 @@ platforms/desktop/build/meadowlark [--sd-root dir | --no-sd] [--input-config fil
 ```
 
 Opens an 800x480 window (`--scale` multiplies it) that can be resized freely; the screen is
-letterboxed, sharp at whole-number scales and filtered otherwise.
+centred at the largest scale that fits. `--scale-mode` says how it is scaled:
+
+| Mode | At a fractional scale (e.g. 1.5x on the uConsole's 1280x720) |
+|---|---|
+| `sharp` (default) | Pixels copied up to the next whole scale, then filtered down: crisp, every pixel the same size, only pixel edges blended |
+| `nearest` | Pixels copied: no blur, but some rows and columns doubled |
+| `smooth` | Filtered: even, but soft |
+| `integer` | The largest whole scale that fits, with black borders: perfectly sharp, smaller |
+
+At whole-number scales all of them copy pixels exactly.
 
 Sound goes to PipeWire on Linux and through SDL (Core Audio) on macOS, at the engine's
 44.1 kHz; the sound server resamples if it runs at another rate. `--audio sdl` uses SDL on

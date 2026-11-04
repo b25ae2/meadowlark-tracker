@@ -5,7 +5,8 @@
 // plugins.toml play the MIDI instruments, their editors in windows of their own.
 //
 //   meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]
-//              [--scale n] [--fullscreen] [--print-input-config]
+//              [--scale n] [--scale-mode sharp|nearest|smooth|integer] [--fullscreen]
+//              [--print-input-config]
 //              [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]
 //              [--audio-input auto|always|off]
 //              [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]
@@ -45,6 +46,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -78,6 +80,36 @@ constexpr const char* kDefaultAudio = "pipewire";
 constexpr const char* kDefaultAudio = "sdl";
 #endif
 
+// How the 800x480 screen fills the window (App::layoutScreen).
+enum class ScaleMode
+{
+    kSharp,   // whole-number scale with pixels copied, then smoothly to the window's size
+    kNearest, // pixels copied at any scale: no blur, uneven at fractional scales
+    kSmooth,  // filtered: even, soft at fractional scales
+    kInteger, // the largest whole-number scale that fits, black borders around it
+};
+
+bool parseScaleMode(const char* name, ScaleMode& mode)
+{
+    static const struct
+    {
+        const char* name;
+        ScaleMode mode;
+    } kModes[] = { { "sharp", ScaleMode::kSharp },
+                   { "nearest", ScaleMode::kNearest },
+                   { "smooth", ScaleMode::kSmooth },
+                   { "integer", ScaleMode::kInteger } };
+    for (const auto& entry : kModes)
+    {
+        if (std::strcmp(name, entry.name) == 0)
+        {
+            mode = entry.mode;
+            return true;
+        }
+    }
+    return false;
+}
+
 struct Options
 {
     std::string sdRoot = DesktopFileSystem::defaultRoot();
@@ -85,6 +117,7 @@ struct Options
     bool traceInput = false;
     bool fullscreen = false;
     int scale = 1;
+    ScaleMode scaleMode = ScaleMode::kSharp;
     std::string audio = kDefaultAudio;
     int audioBuffer = 512; // frames, about 12 ms
     // auto: open the capture device when the Sample Recorder first configures its input.
@@ -100,7 +133,8 @@ struct Options
 void printUsage()
 {
     std::printf("usage: meadowlark [--sd-root dir | --no-sd] [--input-config file] [--trace-input]\n"
-                "                  [--scale n] [--fullscreen] [--print-input-config]\n"
+                "                  [--scale n] [--scale-mode sharp|nearest|smooth|integer] [--fullscreen]\n"
+                "                  [--print-input-config]\n"
                 "                  [--audio pipewire|sdl|none] [--audio-buffer frames] [--no-host-folders]\n"
                 "                  [--audio-input auto|always|off]\n"
                 "                  [--midi-config file] [--no-midi] [--list-midi] [--print-midi-config]\n"
@@ -123,7 +157,7 @@ class App
     void requestQuit();
     void toggleFullscreen();
     void saveScreenshot();
-    void updateScaleMode();
+    void layoutScreen();
     void present();
     void startAudio();
     void stopAudio();
@@ -160,6 +194,10 @@ class App
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
+    // Sharp scaling's intermediate: the screen at a whole-number scale, nearest-neighbour.
+    SDL_Texture* upscaled = nullptr;
+    int upscale = 0;
+    SDL_FRect screenRect{};
     uint64_t presentedFrame = 0;
     bool needsPresent = true;
 
@@ -179,6 +217,8 @@ App::~App()
     stopMidi();
     // Editors before their plugins, which go with the host.
     editorWindows.closeAll();
+    if (upscaled)
+        SDL_DestroyTexture(upscaled);
     if (texture)
         SDL_DestroyTexture(texture);
     if (renderer)
@@ -227,8 +267,6 @@ bool App::init()
         std::fprintf(stderr, "meadowlark: cannot create renderer: %s\n", SDL_GetError());
         return false;
     }
-    SDL_SetRenderLogicalPresentation(renderer, eve::kScreenWidth, eve::kScreenHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
-
     texture = SDL_CreateTexture(renderer,
                                 SDL_PIXELFORMAT_XRGB8888,
                                 SDL_TEXTUREACCESS_STREAMING,
@@ -239,7 +277,8 @@ bool App::init()
         std::fprintf(stderr, "meadowlark: cannot create texture: %s\n", SDL_GetError());
         return false;
     }
-    updateScaleMode();
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    layoutScreen();
 
     if (inputConfig.captureMouse)
         SDL_SetWindowRelativeMouseMode(window, true);
@@ -549,7 +588,7 @@ void App::handleEvent(const SDL_Event& event)
             break;
 
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-            updateScaleMode();
+            layoutScreen();
             needsPresent = true;
             break;
 
@@ -673,18 +712,53 @@ void App::saveScreenshot()
         std::fprintf(stderr, "meadowlark: could not write %s\n", name);
 }
 
-// Whole-number scales stay sharp with nearest-neighbour; anything else is filtered so the
-// pixel rows don't come out uneven.
-void App::updateScaleMode()
+// Where the screen goes in the window, centred at the largest scale that fits, and how it
+// gets there. Sharp scaling copies pixels up to the next whole-number scale, then filters
+// down to the window's size, so only the edges between pixels are blended and every pixel
+// stays the same size; at whole-number scales it is a plain copy.
+void App::layoutScreen()
 {
     int width = 0;
     int height = 0;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
-    const int scaleX = width / eve::kScreenWidth;
-    const int scaleY = height / eve::kScreenHeight;
-    const int scale = scaleX < scaleY ? scaleX : scaleY;
-    const bool exact = scale > 0 && (width == scale * eve::kScreenWidth || height == scale * eve::kScreenHeight);
-    SDL_SetTextureScaleMode(texture, exact ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
+    float scale = std::min(static_cast<float>(width) / eve::kScreenWidth, static_cast<float>(height) / eve::kScreenHeight);
+    if (options.scaleMode == ScaleMode::kInteger && scale >= 1.0f)
+        scale = std::floor(scale);
+    const float w = std::round(eve::kScreenWidth * scale);
+    const float h = std::round(eve::kScreenHeight * scale);
+    screenRect = { std::floor((width - w) / 2), std::floor((height - h) / 2), w, h };
+
+    const bool whole = scale == std::floor(scale);
+    const bool filtered = options.scaleMode == ScaleMode::kSmooth ||
+                          ((options.scaleMode == ScaleMode::kSharp || options.scaleMode == ScaleMode::kInteger) && !whole);
+    SDL_SetTextureScaleMode(texture, filtered ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+
+    // Sharp at a fractional scale above 1: the intermediate at the next whole scale.
+    const int wanted = options.scaleMode == ScaleMode::kSharp && !whole && scale > 1.0f ? static_cast<int>(std::ceil(scale)) : 0;
+    if (wanted != upscale)
+    {
+        if (upscaled)
+            SDL_DestroyTexture(upscaled);
+        upscaled = nullptr;
+        upscale = 0;
+        if (wanted > 0)
+        {
+            upscaled = SDL_CreateTexture(renderer,
+                                         SDL_PIXELFORMAT_XRGB8888,
+                                         SDL_TEXTUREACCESS_TARGET,
+                                         eve::kScreenWidth * wanted,
+                                         eve::kScreenHeight * wanted);
+            if (upscaled)
+            {
+                SDL_SetTextureScaleMode(upscaled, SDL_SCALEMODE_LINEAR);
+                upscale = wanted;
+            }
+            else
+                std::fprintf(stderr, "meadowlark: sharp scaling unavailable (%s), filtering instead\n", SDL_GetError());
+        }
+    }
+    if (upscaled)
+        SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 }
 
 void App::present()
@@ -694,9 +768,15 @@ void App::present()
     presentedFrame = chip.frameCount();
     needsPresent = false;
 
+    if (upscaled)
+    {
+        SDL_SetRenderTarget(renderer, upscaled);
+        SDL_RenderTexture(renderer, texture, nullptr, nullptr);
+        SDL_SetRenderTarget(renderer, nullptr);
+    }
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderTexture(renderer, texture, nullptr, nullptr);
+    SDL_RenderTexture(renderer, upscaled ? upscaled : texture, nullptr, &screenRect);
     SDL_RenderPresent(renderer);
 }
 
@@ -741,6 +821,14 @@ int main(int argc, char** argv)
             options.fullscreen = true;
         else if (std::strcmp(arg, "--scale") == 0 && i + 1 < argc)
             options.scale = std::atoi(argv[++i]);
+        else if (std::strcmp(arg, "--scale-mode") == 0 && i + 1 < argc)
+        {
+            if (!parseScaleMode(argv[++i], options.scaleMode))
+            {
+                printUsage();
+                return 2;
+            }
+        }
         else if (std::strcmp(arg, "--audio") == 0 && i + 1 < argc)
             options.audio = argv[++i];
         else if (std::strcmp(arg, "--audio-buffer") == 0 && i + 1 < argc)
