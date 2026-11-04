@@ -99,6 +99,7 @@ target_compile_options(meadowlark_core
 add_library(meadowlark_platform OBJECT
   source/audio/AudioRenderer.cpp
   source/AudioLock.cpp
+  source/CrashHandler.cpp
   source/DesktopButtons.cpp
   source/DesktopDisplayDriver.cpp
   source/DesktopFileSystem.cpp
@@ -126,6 +127,8 @@ target_link_libraries(meadowlark_platform PUBLIC Threads::Threads)
 # Headless runner: renders audio blocks and display lists without a window or sound device.
 add_executable(meadowlark-headless source/main.cpp)
 target_link_libraries(meadowlark-headless PRIVATE meadowlark_platform)
+# Function names in crash backtraces (CrashHandler).
+set_target_properties(meadowlark-headless PROPERTIES ENABLE_EXPORTS ON)
 target_compile_options(meadowlark-headless PRIVATE -Wall -Wextra)
 
 if(MEADOWLARK_SDL)
@@ -150,6 +153,7 @@ if(MEADOWLARK_SDL)
   add_executable(meadowlark source/sdl/main.cpp source/audio/SdlAudioOutput.cpp)
   target_link_libraries(meadowlark PRIVATE meadowlark_platform meadowlark_input)
   target_compile_options(meadowlark PRIVATE -Wall -Wextra)
+  set_target_properties(meadowlark PROPERTIES ENABLE_EXPORTS ON)
 
   if(MEADOWLARK_PIPEWIRE)
     find_package(PkgConfig REQUIRED)

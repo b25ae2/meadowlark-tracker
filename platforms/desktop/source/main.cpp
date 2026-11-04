@@ -10,6 +10,7 @@
 // seconds (default 0.1), through the same path as the window's input.
 
 #include "AudioLock.h"
+#include "CrashHandler.h"
 #include "PlatformDesktop.h"
 #include "PngWriter.h"
 #include "Tracker.h"
@@ -52,6 +53,7 @@ void renderAudioBlock(Tracker* tracker, int16_t* left, int16_t* right)
 
 int main(int argc, char** argv)
 {
+    installCrashHandler();
     double seconds = 3.0;
     const char* screenshotPath = nullptr;
     std::string sdRoot = DesktopFileSystem::defaultRoot();

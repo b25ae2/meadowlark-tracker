@@ -160,7 +160,9 @@ void cTextBox::update()
         API_END();
     }
 
-    textLength = strlen(text);
+    // Null text (items without a description) draws nothing. Check before strlen: on the
+    // i.MX RT address 0 is readable, so strlen(nullptr) only worked by accident there.
+    textLength = text != nullptr ? strlen(text) : 0;
     position = text;
 
     API_COLOR(colors[0]);

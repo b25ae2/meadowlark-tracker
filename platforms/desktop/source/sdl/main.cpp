@@ -10,6 +10,7 @@
 // powers off, as on the Mini. A second close quits at once.
 
 #include "AudioLock.h"
+#include "CrashHandler.h"
 #include "PlatformDesktop.h"
 #include "PngWriter.h"
 #include "Tracker.h"
@@ -456,6 +457,7 @@ void App::renderAudioInline()
 
 int main(int argc, char** argv)
 {
+    installCrashHandler();
     // Line by line even into a pipe, so --trace-input can be watched through tee.
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
 
