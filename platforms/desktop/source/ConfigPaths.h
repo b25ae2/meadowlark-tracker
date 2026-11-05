@@ -12,5 +12,10 @@ std::string userConfigPath(const char* fileName, const char* envVar);
 // ~/.cache/meadowlark/<name>) on Linux, ~/Library/Caches/Meadowlark/<name> on macOS.
 std::string userCachePath(const char* name);
 
+// Where screenshots go: ~/Pictures on macOS; on Linux the XDG pictures directory
+// ($XDG_PICTURES_DIR or user-dirs.dirs), else ~/Pictures; the home directory if that is
+// missing.
+std::string userPicturesPath();
+
 // "~/x" becomes $HOME/x; other paths are returned as they are.
 std::string expandHome(const std::string& path);

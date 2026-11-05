@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Meadowlark
+GenericName=Music Tracker
+Comment=Polyend Tracker Mini firmware as a desktop app
+Exec=meadowlark
+Icon=org.meadowlark.tracker
+Terminal=false
+Categories=AudioVideo;Audio;Music;Midi;
+Keywords=tracker;sequencer;sampler;music;
+StartupWMClass=org.meadowlark.tracker

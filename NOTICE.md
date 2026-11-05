@@ -48,3 +48,20 @@ Polyend Tracker Community Edition (CE) incorporates or links against the followi
 * **Location**: `synth/lib/`
 * **License**: Polyend Precompiled Synthesizer & DSP Library License (`synth/lib/LICENSE-PROPRIETARY.txt`)
 * **Copyright**: Copyright (c) 2023-2026 Polyend Sp. z o.o. All rights reserved.
+
+## 10. Desktop build (Meadowlark, `platforms/desktop/`)
+Compiled into the desktop app:
+* **stb_image** (`util/3rdparty/stb/`): public domain / MIT, Sean Barrett.
+* **CLAP headers** (`util/3rdparty/clap/`): MIT License, Copyright (c) 2021 Alexandre Bique.
+* **toml++** (system headers, used header-only): MIT License, Copyright (c) Mark Gillard.
+* **LV2 headers**: ISC License, Copyright (c) 2006-2020 Steve Harris, David Robillard and others.
+
+Linked dynamically (on macOS, copied into `Meadowlark.app`):
+* **SDL 3**: zlib License, Copyright (c) 1997-2025 Sam Lantinga.
+* **FreeType**: FreeType License (FTL). Portions of this software are copyright (c) The
+  FreeType Project (www.freetype.org). All rights reserved.
+* **lilv, serd, sord, sratom, zix**: ISC License, Copyright (c) 2007-2024 David Robillard.
+* **libpng** (FreeType's, macOS app): PNG Reference Library License version 2, Copyright (c)
+  1995-2024 The PNG Reference Library Authors.
+* Linux only, from the system: **PipeWire** (MIT), **ALSA library** (LGPL-2.1), **Xlib**
+  (MIT/X11).

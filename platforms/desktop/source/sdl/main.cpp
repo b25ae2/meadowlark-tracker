@@ -705,11 +705,13 @@ void App::saveScreenshot()
     char name[64];
     const std::time_t now = std::time(nullptr);
     std::strftime(name, sizeof(name), "meadowlark-%Y%m%d-%H%M%S.png", std::localtime(&now));
+    // Into Pictures: an app started from the desktop runs in /, which isn't writable.
+    const std::string path = userPicturesPath() + "/" + name;
     const eve::Chip& chip = platform.desktopDisplay().eve();
-    if (writePng(name, chip.frame(), eve::kScreenWidth, eve::kScreenHeight))
-        std::printf("meadowlark: screenshot %s\n", name);
+    if (writePng(path.c_str(), chip.frame(), eve::kScreenWidth, eve::kScreenHeight))
+        std::printf("meadowlark: screenshot %s\n", path.c_str());
     else
-        std::fprintf(stderr, "meadowlark: could not write %s\n", name);
+        std::fprintf(stderr, "meadowlark: could not write %s\n", path.c_str());
 }
 
 // Where the screen goes in the window, centred at the largest scale that fits, and how it

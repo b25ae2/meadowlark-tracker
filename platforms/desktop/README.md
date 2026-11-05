@@ -36,6 +36,25 @@ one per compiler or sanitizer) can live side by side.
 AddressSanitizer does not work on the uConsole kernel (`CONFIG_ARM64_VA_BITS=39`) or with
 Apple clang 15 on macOS 26; UBSan works on both.
 
+## Packages
+
+```sh
+cmake --build platforms/desktop/build --target package
+```
+
+- **Linux:** `meadowlark_<version>_<arch>.deb`, installing `/usr/bin/meadowlark`, a desktop
+  entry (Meadowlark, in the Audio/Music menus) and icons. Its dependencies come from the
+  libraries it links (SDL3, PipeWire, ALSA, FreeType, lilv, X11), so install it with
+  `sudo apt install ./meadowlark_*.deb`.
+- **macOS:** `meadowlark-<version>-macos-<arch>.dmg` with `Meadowlark.app`, which carries
+  its Homebrew libraries and is signed ad hoc. It needs the macOS version Homebrew built
+  them for (Info.plist says which). Downloaded copies are quarantined: the first start needs
+  right-click > Open, or `xattr -dr com.apple.quarantine Meadowlark.app`.
+
+`cmake --install platforms/desktop/build --prefix <dir>` lays out the same files without
+packing them. Started from the desktop, the app has no terminal: its messages are lost and
+F12 screenshots go to the Pictures folder.
+
 ## Run
 
 ```sh

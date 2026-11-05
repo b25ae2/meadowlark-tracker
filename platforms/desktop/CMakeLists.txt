@@ -227,6 +227,8 @@ if(MEADOWLARK_SDL)
     target_compile_definitions(meadowlark PRIVATE MEADOWLARK_HAVE_PIPEWIRE)
   endif()
 
+  include(packaging/Packaging.cmake)
+
   # Sound output (and, with --capture, input) running in real time; plays silence unless --tone.
   add_executable(audio_test tests/audio_test.cpp source/audio/SdlAudioOutput.cpp source/audio/SdlAudioInput.cpp)
   target_link_libraries(audio_test PRIVATE meadowlark_platform SDL3::SDL3)
